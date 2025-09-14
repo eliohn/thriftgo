@@ -9,7 +9,7 @@ enum ErrorCode {
 struct Base {
     1: ErrorCode code
     2: string msg
-} (expandable = "true", version = "1.0.0")
+} (expandable = "true")
 
 
 struct MyData {

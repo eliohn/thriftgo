@@ -98,27 +98,120 @@ func (r *Resolver) GetTypeName(g *Scope, t *parser.Type) (name TypeName, err err
 }
 
 func (r *Resolver) getTypeName(g *Scope, t *parser.Type) (name string, err error) {
+	// 添加调试信息
+	//log.Printf("调试: getTypeName 被调用，类型: %+v", t)
+	//log.Printf("调试: 当前Scope命名空间: %s", g.namespace)
+	//log.Printf("调试: Root命名空间: %s", r.root.namespace)
+
 	if ref := t.GetReference(); ref != nil {
-		g = g.includes[ref.Index].Scope
-		name = g.globals.Get(ref.Name)
+		//log.Printf("调试: 类型有引用信息，Index: %d, Name: %s", ref.Index, ref.Name)
+		//log.Printf("调试: 引用数量: %d", len(g.includes))
+		//for i, inc := range g.includes {
+		//	if inc != nil && inc.Scope != nil {
+		//		log.Printf("调试: 包含文件 %d: 命名空间=%s, 路径=%s", i, inc.PackageName, inc.ImportPath)
+		//	} else {
+		//		log.Printf("调试: 包含文件 %d: nil", i)
+		//	}
+		//}
+
+		if int(ref.Index) < len(g.includes) {
+			g = g.includes[ref.Index].Scope
+			//log.Printf("调试: 切换到引用Scope，命名空间: %s", g.namespace)
+			name = g.globals.Get(ref.Name)
+			//log.Printf("调试: 从引用获取名称: %s", name)
+			//} else {
+			//	log.Printf("调试: 引用索引超出范围: %d >= %d", ref.Index, len(g.includes))
+		}
 	} else {
+		//log.Printf("调试: 类型无引用信息")
 		if s := baseTypes[t.Name]; s != "" {
+			//log.Printf("调试: 是基础类型 %s", s)
 			return s, nil
 		}
 		if isContainerTypes[t.Name] {
+			//log.Printf("调试: 是容器类型，调用 getContainerTypeName")
 			return r.getContainerTypeName(g, t)
 		}
+
+		// 添加更多调试信息
+		//log.Printf("调试: 在当前Scope的globals中查找: %s", t.Name)
 		name = g.globals.Get(t.Name)
+		//log.Printf("调试: 从 globals 获取名称: %s", name)
+
+		// 如果没找到，并且类型名称包含命名空间（如 base.ErrorCode）
+		if name == "" && strings.Contains(t.Name, ".") {
+			//log.Printf("调试: 类型名称包含命名空间，尝试分解查找")
+			parts := strings.Split(t.Name, ".")
+			if len(parts) >= 2 {
+				namespace := strings.Join(parts[:len(parts)-1], ".") // 支持嵌套命名空间
+				typeName := parts[len(parts)-1]
+				//log.Printf("调试: 分解得到命名空间: %s, 类型名: %s", namespace, typeName)
+
+				// 在包含文件中查找匹配命名空间的Scope
+				for _, inc := range g.includes {
+					if inc != nil && inc.Scope != nil {
+						//log.Printf("调试: 检查包含文件 %d: %s", i, inc.PackageName)
+						if inc.PackageName == namespace {
+							//log.Printf("调试: 找到匹配的命名空间: %s", namespace)
+							name = inc.Scope.globals.Get(typeName)
+							//log.Printf("调试: 在匹配的Scope中查找 %s 得到: %s", typeName, name)
+							if name != "" {
+								g = inc.Scope
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// 如果仍然没找到，尝试在包含文件中查找（向后兼容）
+		if name == "" {
+			//log.Printf("调试: 在当前Scope未找到，尝试在包含文件中查找")
+			for _, inc := range g.includes {
+				if inc != nil && inc.Scope != nil {
+					//log.Printf("调试: 检查包含文件 %d: %s", i, inc.PackageName)
+					candidate := inc.Scope.globals.Get(t.Name)
+					if candidate != "" {
+						//log.Printf("调试: 在包含文件 %d 中找到: %s -> %s", i, t.Name, candidate)
+						name = candidate
+						g = inc.Scope
+						break
+					}
+				}
+			}
+		}
 	}
 
 	if name == "" {
-		return "", fmt.Errorf("1 getTypeName failed: type[%v] file[%s]", t, g.ast.Filename)
+		//log.Printf("调试: 未能找到类型名称，返回错误")
+		// 打印所有可用的全局名称用于调试
+		//log.Printf("调试: 当前Scope中的所有全局名称:")
+		//g.globals.Iterate(func(k string, v string) bool {
+		//	log.Printf("  %s -> %v", k, v)
+		//	return true
+		//})
+
+		// 打印包含文件中的所有全局名称
+		//for i, inc := range g.includes {
+		//	if inc != nil && inc.Scope != nil {
+		//		log.Printf("调试: 包含文件 %d (%s) 中的所有全局名称:", i, inc.PackageName)
+		//		inc.Scope.globals.Iterate(func(k string, v string) bool {
+		//			log.Printf("  %s -> %v", k, v)
+		//			return true
+		//		})
+		//	}
+		//}
+
+		return "", fmt.Errorf("getTypeName failed: type[%v] file[%s]", t, g.ast.Filename)
 	}
 
 	if g.namespace != r.root.namespace {
 		pkg := r.root.includeIDL(r.util, g.ast)
+		//log.Printf("调试: 命名空间不同，添加包前缀，包名: %s", pkg)
 		name = pkg + "." + name
 	}
+	//log.Printf("调试: 最终返回的类型名称: %s", name)
 	return
 }
 

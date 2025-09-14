@@ -618,6 +618,21 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						// Create a new field with adjusted ID to avoid conflicts
 						adjustedField := *structField
 						adjustedField.ID = structField.ID + 1000 // Offset to avoid ID conflicts
+
+						// 修复：仅对非基础类型添加命名空间前缀
+						if fieldNameSpace != "" && !isBaseType(structField.Type.Name) {
+							adjustedType := *structField.Type
+							adjustedType.Name = fieldNameSpace + "." + structField.Type.Name
+							adjustedField.Type = &adjustedType
+
+							// 如果有引用信息，也需要更新引用中的Name
+							if adjustedType.Reference != nil {
+								adjustedReference := *adjustedType.Reference
+								adjustedReference.Name = fieldNameSpace
+								adjustedType.Reference = &adjustedReference
+							}
+						}
+
 						log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
 						expandedField := &Field{
 							Field:     &adjustedField,
@@ -629,8 +644,8 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 							isset:     Name(st.scope.Get(_p("isset:" + structField.Name))),
 							deepEqual: Name(st.scope.Get(_p("deepequal:" + id2str(adjustedField.ID)))),
 							isNested:  false,
+							//namespace: fieldNameSpace, // 设置字段的命名空间
 						}
-						s.namespace = fieldNameSpace
 						// Resolve type for expanded field immediately
 						resolver := NewResolver(s, cu)
 						frugalResolver := NewFrugalResolver(s, cu)
@@ -650,9 +665,6 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 							}
 							return c
 						}
-						//if fieldNameSpace != "" {
-						//	expandedField.Field.Type.Name = fieldNameSpace + "." + expandedField.Field.Type.Name
-						//}
 						expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(expandedField.Field))
 						expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(expandedField.Field.Type))
 						expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(expandedField.Field))
@@ -662,6 +674,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 
 						expandedFields = append(expandedFields, expandedField)
 					}
+
 				}
 			}
 		}
@@ -845,4 +858,27 @@ func annotationContainsTrue(annos parser.Annotations, anno string) bool {
 	}
 
 	return false
+}
+
+// 添加辅助函数用于判断是否为基础类型
+func isBaseType(typeName string) bool {
+	baseTypes := map[string]bool{
+		"bool":   true,
+		"byte":   true,
+		"i8":     true,
+		"i16":    true,
+		"i32":    true,
+		"i64":    true,
+		"double": true,
+		"string": true,
+		"binary": true,
+	}
+
+	// 移除可能的命名空间前缀后再判断
+	if strings.Contains(typeName, ".") {
+		parts := strings.Split(typeName, ".")
+		typeName = parts[len(parts)-1]
+	}
+
+	return baseTypes[typeName]
 }
