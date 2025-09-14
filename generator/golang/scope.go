@@ -480,21 +480,22 @@ func (ev *EnumValue) GoLiteral() Code {
 // Field is a wrapper for the parser.Field.
 type Field struct {
 	*parser.Field
-	name            Name
-	typeName        TypeName
-	frugalTypeName  TypeName
-	defaultTypeName TypeName
-	defaultValue    Code
-	isResponse      bool
-	reader          Name
-	writer          Name
-	getter          Name
-	setter          Name
-	isset           Name
-	deepEqual       Name
-	isNested        bool
-	isExpandable    bool
-	expandedFields  []*Field
+	name                Name
+	typeName            TypeName
+	frugalTypeName      TypeName
+	defaultTypeName     TypeName
+	defaultValue        Code
+	isResponse          bool
+	reader              Name
+	writer              Name
+	getter              Name
+	setter              Name
+	isset               Name
+	deepEqual           Name
+	isNested            bool
+	isExpandable        bool
+	expandedFields      []*Field
+	originalStructField *parser.Field // For expanded fields, store the original field for type resolution
 }
 
 // GoName returns the name in go code of the field.

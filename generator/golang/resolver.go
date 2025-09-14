@@ -112,7 +112,7 @@ func (r *Resolver) getTypeName(g *Scope, t *parser.Type) (name string, err error
 	}
 
 	if name == "" {
-		return "", fmt.Errorf("getTypeName failed: type[%v] file[%s]", t, g.ast.Filename)
+		return "", fmt.Errorf("1 getTypeName failed: type[%v] file[%s]", t, g.ast.Filename)
 	}
 
 	if g.namespace != r.root.namespace {

@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -706,7 +705,7 @@ func (p *parser) parseStruct(node *node32) (err error) {
 
 	p.Structs = append(p.Structs, s)
 	p.Annotations = &s.Annotations
-	log.Printf("[ Parser ]Fieds %s Anntations: %v", name, p.Annotations)
+	//log.Printf("[ Parser ]Fieds %s Anntations: %v", name, p.Annotations)
 	return nil
 }
 
@@ -739,7 +738,7 @@ func (p *parser) parseException(node *node32) (err error) {
 	e.ReservedComments = p.DefinitionReservedComment
 	p.Exceptions = append(p.Exceptions, e)
 	p.Annotations = &e.Annotations
-	log.Printf("[ parseException ]Fieds %s Anntations: %v", name, p.Annotations)
+	//log.Printf("[ parseException ]Fieds %s Anntations: %v", name, p.Annotations)
 	return nil
 }
 
@@ -796,7 +795,7 @@ func (p *parser) parseField(node *node32) (field *Field, err error) {
 			}
 		case ruleAnnotations:
 			f.Annotations, err = p.parseAnnotations(node)
-			log.Printf("[ ruleAnnotations ]Fieds %s Anntations: %v", f.Name, f.Annotations)
+			//log.Printf("[ ruleAnnotations ]Fieds %s Anntations: %v", f.Name, f.Annotations)
 			if err != nil {
 				return nil, err
 			}
