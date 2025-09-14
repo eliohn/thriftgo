@@ -1,12 +1,7 @@
 namespace go test
 
-const string VERSION = "1.0.0"
+include "base.thrift"
 
-
-struct Base {
-  1: i32 code
-  2: string msg
-} (expandable = "true", version = "1.0.0")
 
 struct UserDTO {
   1: i64 id
@@ -15,6 +10,6 @@ struct UserDTO {
 }
 
 struct UserResp {
-  1: Base base
+  1: base.Base base
   3: UserDTO data
 }
