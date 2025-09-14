@@ -98,6 +98,7 @@ func (s *Scope) buildIncludes(cu *CodeUtils) {
 		if !inc.GetUsed() {
 			continue
 		}
+		log.Printf("调试: 添加包含文件 %d: %s", idx, inc.Reference.Filename)
 		s.includes[idx] = s.include(cu, inc.Reference)
 	}
 }
@@ -562,10 +563,21 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						adjustedField := *structField
 						adjustedField.ID = structField.ID + 1000 // Offset to avoid ID conflicts
 
-						// 修复：仅对非基础类型添加命名空间前缀
-						if fieldNameSpace != "" && !isBaseType(structField.Type.Name) && !isHasNamespace(structField.Type.Name) {
+						// 修复：处理嵌套引用类型，如 enums.ErrorCode
+						if fieldNameSpace != "" && !isBaseType(structField.Type.Name) && !isHasNamespace(adjustedField.Type.Name) {
 							adjustedType := *structField.Type
-							adjustedType.Name = fieldNameSpace + "." + structField.Type.Name
+							// 如果字段类型本身已经包含了命名空间（如 enums.ErrorCode）
+							// 我们需要合并外部命名空间和内部命名空间
+							if strings.Contains(structField.Type.Name, ".") {
+								// 类型名已经包含命名空间，如 enums.ErrorCode
+								parts := strings.Split(structField.Type.Name, ".")
+								innerNamespace := strings.Join(parts[:len(parts)-1], ".")
+								typeName := parts[len(parts)-1]
+								adjustedType.Name = fieldNameSpace + "." + innerNamespace + "." + typeName
+							} else {
+								// 类型名不包含命名空间，直接添加外部命名空间
+								adjustedType.Name = fieldNameSpace + "." + structField.Type.Name
+							}
 							adjustedField.Type = &adjustedType
 
 							// 如果有引用信息，也需要更新引用中的Name
@@ -576,7 +588,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 							}
 						}
 
-						//log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
+						log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
 						expandedField := &Field{
 							Field:     &adjustedField,
 							name:      Name(st.scope.Add(string(Name(structField.Name)), structField.Name)),
