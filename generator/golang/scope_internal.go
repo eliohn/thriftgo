@@ -391,11 +391,6 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 		}
 		fn = st.scope.Add(fn, f.Name)
 		id := id2str(f.ID)
-		log.Printf("----------------------- %s ----------------------------", f.Name)
-		log.Printf("[DEBUG] Field %s  struct name %s", f.Name, st.Name)
-		log.Printf("[DEBUG] Field %s isExpandField : %t", f.Name, isExpandField(f))
-		log.Printf("[DEBUG] Field %s f.Type.Category.IsStructLike() : %t", f.Name, f.Type.Category.IsStructLike())
-		log.Printf("[DEBUG] Field %s f.Type.Reference : %s", f.Name, f.Type.Reference)
 		// Check if this field should be expanded
 		isExpandable := false
 		var expandedFields []*Field
@@ -408,32 +403,23 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 
 			// First try to find by reference (for cross-file references)
 			if f.Type.Reference != nil && f.Type.Reference.Index >= 0 {
-				log.Printf("[DEBUG] Field %s has reference with index %d", f.Name, f.Type.Reference.Index)
 				// For cross-file references, we need to search in includes first
 				// because the index refers to the position in the included file
-				log.Printf("[DEBUG] 1Searching in includes for struct %s with index %d", f.Type.Name, f.Type.Reference.Index)
-				log.Printf("[DEBUG] Number of includes: %d", len(s.includes))
-				for i, inc := range s.includes {
-					log.Printf("[DEBUG] Checking include %d: %v", i, inc)
+				for _, inc := range s.includes {
 					if inc == nil || inc.Scope == nil {
-						log.Printf("[DEBUG] Include %d is nil or scope is nil", i)
 						continue
 					}
-					log.Printf("[DEBUG] Include %d has %d structs", i, len(inc.Scope.ast.Structs))
 					// Check if the index matches in this include
 					if int(f.Type.Reference.Index) < len(inc.Scope.ast.Structs) {
 						referencedStruct = inc.Scope.ast.Structs[f.Type.Reference.Index]
-						log.Printf("[DEBUG] 1Found referenced struct %s in include %s", referencedStruct.Name, inc.Scope.ast.Filename)
 						break
 					}
 				}
 				// If not found in includes, check current file as fallback
 				if referencedStruct == nil && int(f.Type.Reference.Index) < len(s.ast.Structs) {
-					log.Printf("[DEBUG] 1Found referenced struct %s in current file as fallback", s.ast.Structs[f.Type.Reference.Index].Name)
 					referencedStruct = s.ast.Structs[f.Type.Reference.Index]
 				}
 			} else {
-				log.Printf("[DEBUG] 2Found referenced struct %s", f.Type.Name)
 				// Find by name in current file
 				for _, st := range s.ast.Structs {
 					if st.Name == f.Type.Name {
@@ -461,10 +447,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 
 				// If not found in current file, search in included files
 				if referencedStruct == nil {
-					log.Printf("[DEBUG] 3Searching in included files for struct %s", f.Type.Name)
-					log.Printf("[DEBUG] Number of includes: %d", len(s.includes))
-					for i, inc := range s.includes {
-						log.Printf("[DEBUG] Include %d: %v, Scope: %v", i, inc, inc.Scope)
+					for _, inc := range s.includes {
 						if inc == nil || inc.Scope == nil {
 							continue
 						}
@@ -472,7 +455,6 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						for _, st := range inc.Scope.ast.Structs {
 							if st.Name == f.Type.Name {
 								referencedStruct = st
-								log.Printf("[DEBUG] 3Found referenced struct %s in include %s", st.Name, inc.Scope.ast.Filename)
 								break
 							}
 						}
@@ -483,7 +465,6 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						for _, st := range inc.Scope.ast.Unions {
 							if st.Name == f.Type.Name {
 								referencedStruct = st
-								log.Printf("[DEBUG] 3Found referenced struct %s in include %s", st.Name, inc.Scope.ast.Filename)
 								break
 							}
 						}
@@ -494,7 +475,6 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						for _, st := range inc.Scope.ast.Exceptions {
 							if st.Name == f.Type.Name {
 								referencedStruct = st
-								log.Printf("[DEBUG] 3Found referenced struct %s in include %s", st.Name, inc.Scope.ast.Filename)
 								break
 							}
 						}
@@ -507,15 +487,9 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 
 			// If struct is found and either field has explicit expand annotation OR struct is expandable
 			if referencedStruct != nil {
-				log.Printf("[DEBUG] Found referenced struct %s", referencedStruct.Name)
-				log.Printf("[DEBUG] referencedStruct.Expandable: %v", referencedStruct.Expandable)
-				// log.Printf("[DEBUG] *referencedStruct.Expandable: %v", *referencedStruct.Expandable)
 				// Check if struct is expandable (has expandable = "true" annotation)
 				structIsExpandable := referencedStruct.Expandable != nil && *referencedStruct.Expandable
-				log.Printf("[DEBUG] Field %s is expandable (explicit: %t, struct expandable: %t)", f.Name, shouldExpand, structIsExpandable)
 				if shouldExpand || structIsExpandable {
-					log.Printf("[DEBUG] Field %s is expandable (explicit: %t, struct expandable: %t), expanding...", f.Name, shouldExpand, structIsExpandable)
-					log.Printf("[DEBUG] Found referenced struct %s with %d fields", referencedStruct.Name, len(referencedStruct.Fields))
 					isExpandable = true
 					// Create expanded fields from the struct's fields
 					for _, structField := range referencedStruct.Fields {
@@ -564,12 +538,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 
 						expandedFields = append(expandedFields, expandedField)
 					}
-					log.Printf("[DEBUG] Created %d expanded fields", len(expandedFields))
-				} else {
-					log.Printf("[DEBUG] Field %s is not expandable (explicit: %t, struct expandable: %t)", f.Name, shouldExpand, structIsExpandable)
 				}
-			} else {
-				log.Printf("[DEBUG] Could not find struct %s for expansion", f.Type.Name)
 			}
 		}
 
@@ -585,10 +554,6 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 			isNested:       isNested,
 			isExpandable:   isExpandable,
 			expandedFields: expandedFields,
-		}
-		log.Printf("[DEBUG] Field %s isExpandable: %t, expandedFields count: %d", f.Name, isExpandable, len(expandedFields))
-		for i, ef := range expandedFields {
-			log.Printf("[DEBUG] Expanded field %d: name=%s, typeName=%s", i, ef.Field.Name, ef.typeName)
 		}
 		st.fields = append(st.fields, field)
 	}
@@ -668,10 +633,8 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 		}
 
 		// 处理展开字段的类型解析
-		for i, expandedField := range f.expandedFields {
-			log.Printf("[DEBUG] Resolving type for expanded field %d: %s", i, expandedField.Field.Name)
+		for _, expandedField := range f.expandedFields {
 			expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(expandedField.Field))
-			log.Printf("[DEBUG] Expanded field %s typeName: %s", expandedField.Field.Name, expandedField.typeName)
 			expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(expandedField.Field.Type))
 			expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(expandedField.Field))
 			if expandedField.IsSetDefault() {

@@ -359,16 +359,13 @@ func (p *parser) parseDefinition(node *node32) (err error) {
 			// Apply expandable annotation to the last parsed struct
 			if len(p.Structs) > 0 {
 				lastStruct := p.Structs[len(p.Structs)-1]
-				log.Printf("[DEBUG] Parsing struct %s in file %s, annotations: %v", lastStruct.Name, p.Filename, ann)
 				for _, annotation := range ann {
 					if annotation.Key == "expandable" {
 						expandable := true
 						lastStruct.Expandable = &expandable
-						log.Printf("[DEBUG] Set expandable=true for struct %s in file %s", lastStruct.Name, p.Filename)
 						break
 					}
 				}
-				log.Printf("[DEBUG] Final expandable value for struct %s: %v", lastStruct.Name, lastStruct.Expandable)
 			}
 		}
 	case ruleException:
