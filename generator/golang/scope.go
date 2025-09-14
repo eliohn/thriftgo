@@ -493,6 +493,8 @@ type Field struct {
 	isset           Name
 	deepEqual       Name
 	isNested        bool
+	isExpandable    bool
+	expandedFields  []*Field
 }
 
 // GoName returns the name in go code of the field.
@@ -555,6 +557,16 @@ func (f *Field) DeepEqual() Name {
 // IsNested returns whether the field is a nested type.
 func (f *Field) IsNested() bool {
 	return f.isNested
+}
+
+// IsExpandable returns whether the field should be expanded.
+func (f *Field) IsExpandable() bool {
+	return f.isExpandable
+}
+
+// ExpandedFields returns the fields that should be expanded from this field.
+func (f *Field) ExpandedFields() []*Field {
+	return f.expandedFields
 }
 
 // StructLike is a wrapper for the parser.StructLike.

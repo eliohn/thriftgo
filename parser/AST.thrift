@@ -152,6 +152,7 @@ struct StructLike {
     3: list<Field> Fields
     4: Annotations Annotations
     5: string ReservedComments
+    6: optional bool Expandable // whether this struct can be expanded when used as a field
 }
 
 struct Function {

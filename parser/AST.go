@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"log"
+
 	"github.com/cloudwego/thriftgo/generator/golang/extension/meta"
 )
 
@@ -1098,6 +1100,7 @@ type StructLike struct {
 	Fields           []*Field    `thrift:"Fields,3" frugal:"3,default,list<Field>" json:"Fields"`
 	Annotations      Annotations `thrift:"Annotations,4" frugal:"4,default,list<Annotation>" json:"Annotations"`
 	ReservedComments string      `thrift:"ReservedComments,5" frugal:"5,default,string" json:"ReservedComments"`
+	Expandable       *bool       `thrift:"Expandable,6,optional" frugal:"6,optional,bool" json:"Expandable,omitempty"`
 }
 
 func init() {
@@ -1149,6 +1152,11 @@ func (p *StructLike) GetReservedComments() (v string) {
 	return p.ReservedComments
 }
 
+func (p *StructLike) GetExpandable() (v *bool) {
+	log.Printf("[DEBUG] StructLike.GetExpandable: %v", p.Expandable)
+	return p.Expandable
+}
+
 func (p *StructLike) String() string {
 	if p == nil {
 		return "<nil>"
@@ -1162,6 +1170,7 @@ var fieldIDToName_StructLike = map[int16]string{
 	3: "Fields",
 	4: "Annotations",
 	5: "ReservedComments",
+	6: "Expandable",
 }
 
 type Function struct {

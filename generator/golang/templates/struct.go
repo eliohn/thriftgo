@@ -26,7 +26,13 @@ type {{$TypeName}} struct {
 	{{- if and Features.ReserveComments .ReservedComments}}
 	{{.ReservedComments}}
 	{{- end}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+	{{(.GoName)}} {{.GoTypeName}} {{GenFieldTags . (InsertionPoint $.Category $.Name .Name "tag")}}
+		{{- end}}
+	{{- else}}
 	{{(.GoName)}} {{.GoTypeName}} {{GenFieldTags . (InsertionPoint $.Category $.Name .Name "tag")}} 
+	{{- end}}
 {{- end}}
 	{{- if Features.KeepUnknownFields}}
 	{{- UseStdLibrary "unknown"}}
@@ -150,6 +156,24 @@ func (p *{{$TypeName}}) Error() string {
 {{- end}}
 
 {{- end}}{{/* define "StructLike" */}}
+`
+var StructLikeExpanded = `
+{{define "StructLikeExpanded"}}
+{{- $TypeName := .GoName}}
+type {{$TypeName}} struct {
+{{- range .Fields}}
+    {{- if .Type.Category.IsStructLike}}
+        // 展开嵌入结构体的字段
+        {{- range .Type.Struct.Fields}}
+        {{(.GoName)}} {{.GoTypeName}} {{GenFieldTags . (InsertionPoint $.Category $.Name .Name "tag")}}
+        {{- end}}
+    {{- else}}
+        // 普通字段
+        {{(.GoName)}} {{.GoTypeName}} {{GenFieldTags . (InsertionPoint $.Category $.Name .Name "tag")}}
+    {{- end}}
+{{- end}}
+}
+{{- end}}
 `
 
 // StructLikeDefault is the code template for structure initialization.

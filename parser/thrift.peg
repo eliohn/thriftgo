@@ -29,7 +29,7 @@ Enum  <- ENUM Identifier LWING (ReservedComments Identifier (EQUAL IntConstant)?
 
 Service <- SERVICE Identifier ( EXTENDS Identifier )? LWING Function* RWING
 
-Struct <- STRUCT Identifier LWING Field* RWING
+Struct <- STRUCT Identifier LWING Field* RWING Annotations?
 
 Union <- UNION Identifier LWING Field* RWING
 

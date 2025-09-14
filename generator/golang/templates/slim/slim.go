@@ -55,7 +55,11 @@ type {{$TypeName}} struct {
 	{{- if and Features.ReserveComments .ReservedComments}}
 	{{.ReservedComments}}
 	{{- end}}
-	{{- if .IsNested}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+	{{(.GoName)}} {{.GoTypeName}} {{GenFieldTags . (InsertionPoint $.Category $.Name .Name "tag")}}
+		{{- end}}
+	{{- else if .IsNested}}
 		{{.GoTypeName}} {{GenFieldTags . (InsertionPoint $.Category $.Name .Name "tag")}}
 	{{else}}
 		{{(.GoName)}} {{.GoTypeName}} {{GenFieldTags . (InsertionPoint $.Category $.Name .Name "tag")}}

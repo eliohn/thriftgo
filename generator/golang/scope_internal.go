@@ -37,6 +37,8 @@ const (
 	nestedAnnotation    = "thrift.nested"
 	interfaceAnnotation = "thrift.is_interface"
 	aliasAnnotation     = "thrift.is_alias"
+	// expandAnnotation is to denote the field should be expanded into parent struct.
+	expandAnnotation = "thrift.expand"
 )
 
 func _p(id string) string {
@@ -389,16 +391,104 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 		}
 		fn = st.scope.Add(fn, f.Name)
 		id := id2str(f.ID)
+		log.Printf("[DEBUG] Field %s  struct name %s", f.Name, st.Name)
+		log.Printf("[DEBUG] Field %s isExpandField : %t", f.Name, isExpandField(f))
+		log.Printf("[DEBUG] Field %s f.Type.Category.IsStructLike() : %t", f.Name, f.Type.Category.IsStructLike())
+		log.Printf("[DEBUG] Field %s f.Type.Reference : %s", f.Name, f.Type.Reference)
+		// Check if this field should be expanded
+		isExpandable := false
+		var expandedFields []*Field
+		if f.Type.Category.IsStructLike() {
+			// Check if field has explicit expand annotation OR if the referenced struct is expandable
+			shouldExpand := isExpandField(f)
+
+			// Find the referenced struct
+			var referencedStruct *parser.StructLike
+
+			// First try to find by reference (for cross-file references)
+			if f.Type.Reference != nil && f.Type.Reference.Index >= 0 && int(f.Type.Reference.Index) < len(s.ast.Structs) {
+				log.Printf("[DEBUG] 1Found referenced struct %s", s.ast.Structs[f.Type.Reference.Index].Name)
+				referencedStruct = s.ast.Structs[f.Type.Reference.Index]
+			} else {
+				log.Printf("[DEBUG] 2Found referenced struct %s", f.Type.Name)
+				// Find by name in current file
+				for _, st := range s.ast.Structs {
+					if st.Name == f.Type.Name {
+						referencedStruct = st
+						break
+					}
+				}
+				// Also check unions and exceptions
+				if referencedStruct == nil {
+					for _, st := range s.ast.Unions {
+						if st.Name == f.Type.Name {
+							referencedStruct = st
+							break
+						}
+					}
+				}
+				if referencedStruct == nil {
+					for _, st := range s.ast.Exceptions {
+						if st.Name == f.Type.Name {
+							referencedStruct = st
+							break
+						}
+					}
+				}
+			}
+
+			// If struct is found and either field has explicit expand annotation OR struct is expandable
+			if referencedStruct != nil {
+				log.Printf("[DEBUG] Found referenced struct %s", referencedStruct.Name)
+				log.Printf("[DEBUG] referencedStruct.Expandable: %v", referencedStruct.Expandable)
+				// log.Printf("[DEBUG] *referencedStruct.Expandable: %v", *referencedStruct.Expandable)
+				// Check if struct is expandable (has expandable = "true" annotation)
+				structIsExpandable := referencedStruct.Expandable != nil && *referencedStruct.Expandable
+				log.Printf("[DEBUG] Field %s is expandable (explicit: %t, struct expandable: %t)", f.Name, shouldExpand, structIsExpandable)
+				if shouldExpand || structIsExpandable {
+					log.Printf("[DEBUG] Field %s is expandable (explicit: %t, struct expandable: %t), expanding...", f.Name, shouldExpand, structIsExpandable)
+					log.Printf("[DEBUG] Found referenced struct %s with %d fields", referencedStruct.Name, len(referencedStruct.Fields))
+					isExpandable = true
+					// Create expanded fields from the struct's fields
+					for _, structField := range referencedStruct.Fields {
+						// Create a new field with adjusted ID to avoid conflicts
+						adjustedField := *structField
+						adjustedField.ID = structField.ID + 1000 // Offset to avoid ID conflicts
+
+						expandedField := &Field{
+							Field:     &adjustedField,
+							name:      Name(st.scope.Add(string(Name(structField.Name)), structField.Name)),
+							reader:    Name(st.scope.Get(_p("read:" + id2str(adjustedField.ID)))),
+							writer:    Name(st.scope.Get(_p("write:" + id2str(adjustedField.ID)))),
+							getter:    Name(st.scope.Get(_p("get:" + structField.Name))),
+							setter:    Name(st.scope.Get(_p("set:" + structField.Name))),
+							isset:     Name(st.scope.Get(_p("isset:" + structField.Name))),
+							deepEqual: Name(st.scope.Get(_p("deepequal:" + id2str(adjustedField.ID)))),
+							isNested:  false,
+						}
+						expandedFields = append(expandedFields, expandedField)
+					}
+					log.Printf("[DEBUG] Created %d expanded fields", len(expandedFields))
+				} else {
+					log.Printf("[DEBUG] Field %s is not expandable (explicit: %t, struct expandable: %t)", f.Name, shouldExpand, structIsExpandable)
+				}
+			} else {
+				log.Printf("[DEBUG] Could not find struct %s for expansion", f.Type.Name)
+			}
+		}
+
 		st.fields = append(st.fields, &Field{
-			Field:     f,
-			name:      Name(fn),
-			reader:    Name(st.scope.Get(_p("read:" + id))),
-			writer:    Name(st.scope.Get(_p("write:" + id))),
-			getter:    Name(st.scope.Get(_p("get:" + f.Name))),
-			setter:    Name(st.scope.Get(_p("set:" + f.Name))),
-			isset:     Name(st.scope.Get(_p("isset:" + f.Name))),
-			deepEqual: Name(st.scope.Get(_p("deepequal:" + id))),
-			isNested:  isNested,
+			Field:          f,
+			name:           Name(fn),
+			reader:         Name(st.scope.Get(_p("read:" + id))),
+			writer:         Name(st.scope.Get(_p("write:" + id))),
+			getter:         Name(st.scope.Get(_p("get:" + f.Name))),
+			setter:         Name(st.scope.Get(_p("set:" + f.Name))),
+			isset:          Name(st.scope.Get(_p("isset:" + f.Name))),
+			deepEqual:      Name(st.scope.Get(_p("deepequal:" + id))),
+			isNested:       isNested,
+			isExpandable:   isExpandable,
+			expandedFields: expandedFields,
 		})
 	}
 
@@ -522,6 +612,10 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 
 func isNestedField(f *parser.Field) bool {
 	return annotationContainsTrue(f.Annotations, nestedAnnotation)
+}
+
+func isExpandField(f *parser.Field) bool {
+	return annotationContainsTrue(f.Annotations, expandAnnotation)
 }
 
 func isAliasType(s *parser.StructLike) bool {

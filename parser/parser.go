@@ -348,6 +348,25 @@ func (p *parser) parseDefinition(node *node32) (err error) {
 		if err := p.parseStruct(node); err != nil {
 			return err
 		}
+		// Parse annotations after struct parsing
+		node = node.next
+		if node != nil && node.pegRule == ruleAnnotations {
+			ann, err := p.parseAnnotations(node)
+			if err != nil {
+				return err
+			}
+			// Apply expandable annotation to the last parsed struct
+			if len(p.Structs) > 0 {
+				lastStruct := p.Structs[len(p.Structs)-1]
+				for _, annotation := range ann {
+					if annotation.Key == "expandable" {
+						expandable := true
+						lastStruct.Expandable = &expandable
+						break
+					}
+				}
+			}
+		}
 	case ruleException:
 		if err := p.parseException(node); err != nil {
 			return err
@@ -359,13 +378,15 @@ func (p *parser) parseDefinition(node *node32) (err error) {
 	default:
 		return fmt.Errorf("unknown rule: " + rul3s[node.pegRule])
 	}
-	node = node.next
-	if node != nil && node.pegRule == ruleAnnotations {
-		ann, err := p.parseAnnotations(node)
-		if err != nil {
-			return err
+	if node != nil {
+		node = node.next
+		if node != nil && node.pegRule == ruleAnnotations {
+			ann, err := p.parseAnnotations(node)
+			if err != nil {
+				return err
+			}
+			*p.Annotations = ann
 		}
-		*p.Annotations = ann
 	}
 	return nil
 }
@@ -681,6 +702,7 @@ func (p *parser) parseStruct(node *node32) (err error) {
 	}
 	s := &StructLike{Category: "struct", Name: name, Fields: fields}
 	s.ReservedComments = p.DefinitionReservedComment
+
 	p.Structs = append(p.Structs, s)
 	p.Annotations = &s.Annotations
 	return nil
