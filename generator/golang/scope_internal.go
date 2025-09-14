@@ -602,7 +602,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 			if referencedStruct != nil {
 				// Check if struct is expandable (has expandable = "true" annotation)
 				structIsExpandable := referencedStruct.Expandable != nil && *referencedStruct.Expandable
-				log.Printf("struct %s is expandable: %t , shouldExpand: %t", referencedStruct.Name, structIsExpandable, shouldExpand)
+				//log.Printf("struct %s is expandable: %t , shouldExpand: %t", referencedStruct.Name, structIsExpandable, shouldExpand)
 				if shouldExpand || structIsExpandable {
 					isExpandable = true
 					fieldNameSpace := ""
@@ -633,7 +633,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 							}
 						}
 
-						log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
+						//log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
 						expandedField := &Field{
 							Field:     &adjustedField,
 							name:      Name(st.scope.Add(string(Name(structField.Name)), structField.Name)),
