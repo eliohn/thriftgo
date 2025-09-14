@@ -1,13 +1,9 @@
 namespace go base
 
-enum ErrorCode {
-    Success = 0,
-    Unknown = 1,
-    InvalidParam = 2,
-}
+include "enums.thrift"
 
 struct Base {
-    1: ErrorCode code
+    1: enums.ErrorCode code
     2: string msg
 } (expandable = "true")
 

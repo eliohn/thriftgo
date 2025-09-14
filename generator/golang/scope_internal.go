@@ -620,7 +620,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						adjustedField.ID = structField.ID + 1000 // Offset to avoid ID conflicts
 
 						// 修复：仅对非基础类型添加命名空间前缀
-						if fieldNameSpace != "" && !isBaseType(structField.Type.Name) {
+						if fieldNameSpace != "" && !isBaseType(structField.Type.Name) && !isHasNamespace(structField.Type.Name) {
 							adjustedType := *structField.Type
 							adjustedType.Name = fieldNameSpace + "." + structField.Type.Name
 							adjustedField.Type = &adjustedType
@@ -881,4 +881,12 @@ func isBaseType(typeName string) bool {
 	}
 
 	return baseTypes[typeName]
+}
+
+// 是否是引用我类型
+func isHasNamespace(typeName string) bool {
+	if strings.Contains(typeName, ".") {
+		return true
+	}
+	return false
 }
