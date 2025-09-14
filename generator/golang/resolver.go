@@ -16,7 +16,6 @@ package golang
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/cloudwego/thriftgo/parser"
@@ -99,24 +98,12 @@ func (r *Resolver) GetTypeName(g *Scope, t *parser.Type) (name TypeName, err err
 }
 
 func (r *Resolver) getTypeName(g *Scope, t *parser.Type) (name string, err error) {
-	// 添加调试信息
-	//log.Printf("调试: getTypeName 被调用，类型: %+v", t)
-	//log.Printf("调试: 当前Scope命名空间: %s", g.namespace)
-	//log.Printf("调试: Root命名空间: %s", r.root.namespace)
-
-	defer func() {
-		log.Printf("调试: GetTypeName 返回: %s", name)
-	}()
-
 	if ref := t.GetReference(); ref != nil {
 		if strings.Contains(t.Name, ".") {
-			//log.Printf("调试: 类型名称包含命名空间，尝试分解查找")
 			parts := strings.Split(t.Name, ".")
 			if len(parts) >= 2 {
-				namespace := strings.Join(parts[:len(parts)-1], ".") // 支持嵌套命名空间
+				namespace := strings.Join(parts[:len(parts)-1], ".")
 				typeName := parts[len(parts)-1]
-
-				// 在包含文件中查找匹配命名空间的Scope
 				for _, inc := range g.includes {
 					if inc != nil && inc.Scope != nil {
 						if inc.PackageName == namespace {
@@ -140,13 +127,10 @@ func (r *Resolver) getTypeName(g *Scope, t *parser.Type) (name string, err error
 
 		name = g.globals.Get(t.Name)
 		if name == "" && strings.Contains(t.Name, ".") {
-			//log.Printf("调试: 类型名称包含命名空间，尝试分解查找")
 			parts := strings.Split(t.Name, ".")
 			if len(parts) >= 2 {
-				namespace := strings.Join(parts[:len(parts)-1], ".") // 支持嵌套命名空间
+				namespace := strings.Join(parts[:len(parts)-1], ".")
 				typeName := parts[len(parts)-1]
-
-				// 在包含文件中查找匹配命名空间的Scope
 				for _, inc := range g.includes {
 					if inc != nil && inc.Scope != nil {
 						if inc.PackageName == namespace {
@@ -160,8 +144,6 @@ func (r *Resolver) getTypeName(g *Scope, t *parser.Type) (name string, err error
 				}
 			}
 		}
-
-		// 如果仍然没找到，尝试在包含文件中查找（向后兼容）
 		if name == "" {
 			for _, inc := range g.includes {
 				if inc != nil && inc.Scope != nil {

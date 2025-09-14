@@ -1,7 +1,6 @@
 namespace go test_temp
 
 include "base.thrift"
-include "enums.thrift"
 
 
 enum BtextCode {
@@ -15,7 +14,6 @@ struct User {
   2: string name
   3: string email
   4: BtextCode phone
-  5: enums.ErrorCode code
 }
 struct UserDTO {
   1: i64 id
