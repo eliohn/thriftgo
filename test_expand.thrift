@@ -1,4 +1,4 @@
-namespace go test
+namespace go test_temp
 
 include "base.thrift"
 
