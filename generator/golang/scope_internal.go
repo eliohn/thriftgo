@@ -313,45 +313,30 @@ func (s *Scope) setRefImport(refPath string) {
 func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 	var referencedStruct *parser.StructLike
 
-	// 添加调试信息
-	//log.Printf("----------------------getReferencedStruct-------------------------")
-	//log.Printf("调试: getReferencedStruct 被调用，字段: %s (类型: %s)", f.Name, f.Type.Name)
-	//log.Printf("调试: 字段引用信息: Reference=%+v", f.Type.Reference)
-
 	// Extract package name and type name from f.Type.Name (e.g., "base.MyData" -> "base", "MyData")
 	var expectedPackageName, expectedTypeName string
 	if strings.Contains(f.Type.Name, ".") {
 		parts := strings.Split(f.Type.Name, ".")
 		expectedPackageName = strings.Join(parts[:len(parts)-1], ".") // Support nested packages
 		expectedTypeName = parts[len(parts)-1]
-		//log.Printf("调试: 类型名称包含命名空间，包名: %s, 类型名: %s", expectedPackageName, expectedTypeName)
 	} else {
 		expectedTypeName = f.Type.Name
-		//log.Printf("调试: 类型名称不包含命名空间，类型名: %s", expectedTypeName)
 	}
 
 	// First try to find by reference (for cross-file references)
 	if f.Type.Reference != nil && f.Type.Reference.Index >= 0 {
-		//log.Printf("调试: 字段 %s 有引用，索引为: %d", f.Name, f.Type.Reference.Index)
-		//log.Printf("调试: 引用包数量: %d", len(s.includes))
-
 		// Use the reference's package name if available
 		referencePackageName := ""
 		if f.Type.Reference.Name != "" {
 			referencePackageName = f.Type.Reference.Name
-			//log.Printf("调试: 引用中指定的包名: %s", referencePackageName)
 		}
 
 		// For cross-file references, we need to search in includes first
 		// because the index refers to the position in the included file
 		for _, inc := range s.includes {
 			if inc == nil || inc.Scope == nil {
-				//log.Printf("调试: 包含文件 %d 为空或作用域为空，跳过", i)
 				continue
 			}
-
-			//log.Printf("调试: 检查包含文件 %d: 包名=%s, 路径=%s, 结构体数量=%d",
-			//	i, inc.PackageName, inc.ImportPath, len(inc.Scope.ast.Structs))
 
 			// Check if this include matches the expected package name
 			if expectedPackageName != "" || referencePackageName != "" {
@@ -360,32 +345,19 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 				if packageNameToMatch == "" {
 					packageNameToMatch = expectedPackageName
 				}
-
-				// Check if package name matches
-				//if inc.PackageName != packageNameToMatch {
-				//	log.Printf("调试: 包名不匹配，期望: %s, 实际: %s", packageNameToMatch, inc.PackageName)
-				//	continue
-				//}
-				//log.Printf("调试: 包名匹配: %s", packageNameToMatch)
 			}
 
 			// Check if the index matches in this include
 			if int(f.Type.Reference.Index) < len(inc.Scope.ast.Structs) {
 				var ix int
 				for index, candidateStruct := range inc.Scope.ast.Structs {
-					//log.Printf("调试: 检查包含文件 %d 的索引 %d 处的结构体: %s",
-					//	index, f.Type.Reference.Index, candidateStruct.Name)
 					if candidateStruct.Name == expectedTypeName {
 						referencedStruct = candidateStruct
-						//log.Printf("调试: 找到匹配结构体: %s", referencedStruct.Name)
 						ix = index
 						break
 					}
 				}
 				candidateStruct := inc.Scope.ast.Structs[ix]
-				//log.Printf("调试: 在包含文件 %d 的索引 %d 处找到候选结构体: %s",
-				//	i, f.Type.Reference.Index, candidateStruct.Name)
-
 				// 验证结构体名称是否匹配字段类型名称
 				if candidateStruct.Name == expectedTypeName {
 					referencedStruct = candidateStruct
@@ -397,28 +369,15 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 		// If not found in includes, check current file as fallback
 		if referencedStruct == nil && int(f.Type.Reference.Index) < len(s.ast.Structs) {
 			candidateStruct := s.ast.Structs[f.Type.Reference.Index]
-			// 验证结构体名称是否匹配字段类型名称
-			// 当在当前文件中查找时，期望的包名应该为空或者与当前文件的命名空间匹配
-			if expectedPackageName != "" {
-				// 如果类型包含包名，但在当前文件中找到了匹配的结构体，这可能意味着命名空间引用错误
-				//log.Printf("警告: 在当前文件中找到了结构体 %s，但类型名包含包名: %s", candidateStruct.Name, f.Type.Name)
-			}
-
 			if candidateStruct.Name == expectedTypeName {
 				referencedStruct = candidateStruct
-				//log.Printf("调试: 结构体名称匹配，返回结构体: %s", referencedStruct.Name)
 			}
-		} else if referencedStruct == nil {
-			log.Printf("调试: 结构体未找到，索引 %d 在当前文件中超出范围 (长度=%d)",
-				f.Type.Reference.Index, len(s.ast.Structs))
 		}
 	} else {
 		// Find by name in current file
-		found := false
 		for _, st := range s.ast.Structs {
 			if st.Name == f.Type.Name {
 				referencedStruct = st
-				found = true
 				break
 			}
 		}
@@ -428,7 +387,6 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 			for _, st := range s.ast.Unions {
 				if st.Name == f.Type.Name {
 					referencedStruct = st
-					found = true
 					break
 				}
 			}
@@ -437,7 +395,6 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 			for _, st := range s.ast.Exceptions {
 				if st.Name == f.Type.Name {
 					referencedStruct = st
-					found = true
 					break
 				}
 			}
@@ -459,7 +416,6 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 				for _, st := range inc.Scope.ast.Structs {
 					if st.Name == expectedTypeName {
 						referencedStruct = st
-						found = true
 						break
 					}
 				}
@@ -471,7 +427,6 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 				for _, st := range inc.Scope.ast.Unions {
 					if st.Name == expectedTypeName {
 						referencedStruct = st
-						found = true
 						break
 					}
 				}
@@ -483,7 +438,6 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 				for _, st := range inc.Scope.ast.Exceptions {
 					if st.Name == expectedTypeName {
 						referencedStruct = st
-						found = true
 						break
 					}
 				}
@@ -491,19 +445,8 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 					break
 				}
 			}
-
-			if !found {
-				log.Printf("调试: 在任何包含文件中都未按名称找到结构体: %s", f.Type.Name)
-			}
 		}
 	}
-
-	//if referencedStruct != nil {
-	//	log.Printf("调试: 返回引用的结构体: %s (类别: %s)",	referencedStruct.Name, referencedStruct.Category)
-	//} else {
-	//	log.Printf("调试: 未找到字段的引用结构体: %s (类型: %s)", f.Name, f.Type.Name)
-	//}
-
 	return referencedStruct
 }
 
