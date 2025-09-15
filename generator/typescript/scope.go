@@ -59,6 +59,7 @@ type ExpandedStruct struct {
 type ImportInfo struct {
 	Module string
 	Types  []string
+	Path   string
 }
 
 // IsEmpty 检查作用域是否为空
@@ -160,12 +161,19 @@ func (s *Scope) collectImports(ast *parser.Thrift) {
 		s.collectImportsFromStruct(exception, importMap)
 	}
 
+	// 获取当前文件的 TypeScript namespace
+	currentNamespace := s.utils.getTypeScriptNamespace(ast)
+
 	// 转换为 ImportInfo 列表
 	for module, types := range importMap {
 		if len(types) > 0 {
+			// 计算相对路径
+			relativePath := s.calculateRelativePath(currentNamespace, module)
+
 			s.Imports = append(s.Imports, ImportInfo{
 				Module: module,
 				Types:  types,
+				Path:   relativePath,
 			})
 		}
 	}
@@ -426,9 +434,38 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 // CombineOutputPath 组合输出路径
 func (u *CodeUtils) CombineOutputPath(basePath string, ast *parser.Thrift) string {
 	if basePath == "" {
-		return "."
+		basePath = "."
 	}
+
+	// 查找 TypeScript namespace
+	tsNamespace := u.getTypeScriptNamespace(ast)
+	if tsNamespace != "" {
+		return filepath.Join(basePath, tsNamespace)
+	}
+
+	// 没有 TypeScript namespace，生成到根目录
 	return basePath
+}
+
+// getTypeScriptNamespace 获取 TypeScript namespace
+func (u *CodeUtils) getTypeScriptNamespace(ast *parser.Thrift) string {
+	for _, ns := range ast.Namespaces {
+		if ns.Language == "ts" || ns.Language == "typescript" {
+			return ns.Name
+		}
+	}
+	return ""
+}
+
+// calculateRelativePath 计算相对路径
+func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) string {
+	// 如果当前文件没有 namespace，目标文件也没有 namespace，直接使用模块名
+	if currentNamespace == "" {
+		return targetModule
+	}
+
+	// 如果目标模块没有对应的 TypeScript namespace，使用 ../
+	return "../" + targetModule
 }
 
 // GetFilename 获取生成的文件名

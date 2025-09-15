@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"text/template"
 
@@ -156,13 +157,67 @@ func (t *TypeScriptBackend) executeTemplates() {
 }
 
 func (t *TypeScriptBackend) renderOneFile(ast *parser.Thrift) error {
-	path := t.utils.CombineOutputPath(t.req.OutputPath, ast)
-	filename := filepath.Join(path, t.utils.GetFilename(ast))
 	scope, err := BuildScope(t.utils, ast)
 	if err != nil {
 		return err
 	}
-	return t.renderByTemplate(scope, t.tpl, filename)
+
+	// 检查是否有 TypeScript namespace
+	tsNamespace := t.utils.getTypeScriptNamespace(ast)
+	if tsNamespace != "" {
+		// 有 namespace，生成到对应文件夹
+		path := t.utils.CombineOutputPath(t.req.OutputPath, ast)
+		return t.renderSeparateFiles(scope, t.tpl, path)
+	} else {
+		// 没有 namespace，生成到根目录
+		path := t.utils.CombineOutputPath(t.req.OutputPath, ast)
+		return t.renderByTemplate(scope, t.tpl, filepath.Join(path, t.utils.GetFilename(ast)))
+	}
+}
+
+// renderSeparateFiles 为每个类型生成单独的文件
+func (t *TypeScriptBackend) renderSeparateFiles(scope *Scope, executeTpl *template.Template, basePath string) error {
+	// 生成 index.ts 文件（包含所有导入和导出）
+	if err := t.renderIndexFile(scope, executeTpl, basePath); err != nil {
+		return err
+	}
+
+	// 为每个枚举生成单独文件
+	for _, enum := range scope.Enums {
+		if err := t.renderEnumFile(scope, executeTpl, basePath, enum); err != nil {
+			return err
+		}
+	}
+
+	// 为每个结构体生成单独文件
+	for _, structLike := range scope.Structs {
+		if err := t.renderStructFile(scope, executeTpl, basePath, structLike); err != nil {
+			return err
+		}
+	}
+
+	// 为每个联合体生成单独文件
+	for _, union := range scope.Unions {
+		if err := t.renderStructFile(scope, executeTpl, basePath, union); err != nil {
+			return err
+		}
+	}
+
+	// 为每个异常生成单独文件
+	for _, exception := range scope.Exceptions {
+		if err := t.renderStructFile(scope, executeTpl, basePath, exception); err != nil {
+			return err
+		}
+	}
+
+	// 为每个服务生成单独文件
+	for _, service := range scope.Services {
+		if err := t.renderServiceFile(scope, executeTpl, basePath, service); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 var poolBuffer = sync.Pool{
@@ -214,4 +269,89 @@ func (t *TypeScriptBackend) buildResponse() *plugin.Response {
 func (t *TypeScriptBackend) PostProcess(path string, content []byte) ([]byte, error) {
 	// TypeScript 不需要特殊的格式化，直接返回
 	return content, nil
+}
+
+// renderIndexFile 生成 index.ts 文件
+func (t *TypeScriptBackend) renderIndexFile(scope *Scope, executeTpl *template.Template, basePath string) error {
+	filename := filepath.Join(basePath, "index.ts")
+	return t.renderByTemplateWithTemplate(scope, executeTpl, filename, "index")
+}
+
+// renderEnumFile 生成枚举文件
+func (t *TypeScriptBackend) renderEnumFile(scope *Scope, executeTpl *template.Template, basePath string, enum *parser.Enum) error {
+	filename := filepath.Join(basePath, strings.ToLower(enum.Name)+".ts")
+
+	// 创建只包含该枚举的 scope
+	enumScope := &Scope{
+		Filename: scope.Filename,
+		Package:  scope.Package,
+		Imports:  scope.Imports,
+		Enums:    []*parser.Enum{enum},
+		utils:    scope.utils,
+	}
+
+	return t.renderByTemplateWithTemplate(enumScope, executeTpl, filename, "singleEnum")
+}
+
+// renderStructFile 生成结构体文件
+func (t *TypeScriptBackend) renderStructFile(scope *Scope, executeTpl *template.Template, basePath string, structLike *parser.StructLike) error {
+	filename := filepath.Join(basePath, strings.ToLower(structLike.Name)+".ts")
+
+	// 创建只包含该结构体的 scope
+	structScope := &Scope{
+		Filename:        scope.Filename,
+		Package:         scope.Package,
+		Imports:         scope.Imports,
+		Structs:         []*parser.StructLike{structLike},
+		ExpandedStructs: scope.ExpandedStructs,
+		utils:           scope.utils,
+	}
+
+	return t.renderByTemplateWithTemplate(structScope, executeTpl, filename, "singleStruct")
+}
+
+// renderServiceFile 生成服务文件
+func (t *TypeScriptBackend) renderServiceFile(scope *Scope, executeTpl *template.Template, basePath string, service *parser.Service) error {
+	filename := filepath.Join(basePath, strings.ToLower(service.Name)+".ts")
+
+	// 创建只包含该服务的 scope
+	serviceScope := &Scope{
+		Filename: scope.Filename,
+		Package:  scope.Package,
+		Imports:  scope.Imports,
+		Services: []*parser.Service{service},
+		utils:    scope.utils,
+	}
+
+	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "singleService")
+}
+
+// renderByTemplateWithTemplate 使用指定模板渲染文件
+func (t *TypeScriptBackend) renderByTemplateWithTemplate(scope *Scope, executeTpl *template.Template, filename string, templateName string) error {
+	if scope == nil {
+		return nil
+	}
+
+	// if scope has no content, just skip and don't generate this file
+	if t.utils.Features().SkipEmpty {
+		if scope.IsEmpty() {
+			return nil
+		}
+	}
+
+	w := poolBuffer.Get().(*bytes.Buffer)
+	defer poolBuffer.Put(w)
+
+	w.Reset()
+
+	t.utils.SetRootScope(scope)
+	err := executeTpl.ExecuteTemplate(w, templateName, scope)
+	if err != nil {
+		return fmt.Errorf("%s: %w", filename, err)
+	}
+	t.res.Contents = append(t.res.Contents, &plugin.Generated{
+		Content: w.String(),
+		Name:    &filename,
+	})
+	return nil
 }

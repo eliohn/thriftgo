@@ -605,6 +605,7 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 			isExpandable:   isExpandable,
 			expandedFields: expandedFields,
 		}
+
 		st.fields = append(st.fields, field)
 	}
 
@@ -723,15 +724,93 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 
 	for _, svc := range s.services {
 		for _, fun := range svc.functions {
+			// 处理函数参数类型解析
 			for _, f := range fun.argType.fields {
 				a := *f
 				a.name = Name(fun.scope.Get(f.Name))
+				// 确保参数类型正确解析，应用命名空间修复逻辑
+				if f.Type != nil && strings.Contains(f.Type.Name, ".") {
+					// 如果类型名包含命名空间，需要修复它
+					parts := strings.Split(f.Type.Name, ".")
+					typeName := parts[len(parts)-1]
+					// 从当前作用域获取正确的命名空间
+					correctNamespace := ""
+					// 如果作用域中没有命名空间，尝试从 includes 中获取
+					for _, inc := range s.includes {
+						if inc != nil && inc.Scope != nil {
+							//typeName 是不是在 inc 中
+							if inc.Scope.globals.Get(typeName) != "" {
+								// log.Printf("REQ调试: %s 在 %s 中", typeName, inc.PackageName)
+								correctNamespace = inc.PackageName
+								break
+							}
+						}
+					}
+					var fullTypeName string
+					if correctNamespace == "" {
+						fullTypeName = typeName
+					} else {
+						fullTypeName = correctNamespace + "." + typeName
+					}
+					// 直接使用完整的类型名
+					a.typeName = ensureType(TypeName("*"+fullTypeName), nil)
+				} else {
+					// 普通类型解析
+					a.typeName = ensureType(resolver.ResolveTypeName(f.Type))
+				}
 				fun.arguments = append(fun.arguments, &a)
 			}
 			if !fun.Oneway {
 				fs := fun.resType.fields
 				if !fun.Void {
-					fun.responseType = ensureType(resolver.ResolveTypeName(fs[0].Type))
+
+					// 对于展开字段，需要找到原始的类型而不是展开后的字段类型
+					if fs[0].isExpandable && fs[0].originalStructField != nil {
+						// 使用原始字段的类型
+						resolvedType, err := resolver.ResolveTypeName(fs[0].originalStructField.Type)
+						fun.responseType = ensureType(resolvedType, err)
+					} else {
+						// 检查是否是 success 字段，如果是，使用原始的函数返回类型
+						if fs[0].Name == "success" {
+							// 使用原始的函数返回类型，而不是展开后的类型
+							// 这里需要确保使用正确的类型
+
+							// 如果 Type.Name 包含命名空间，需要修复它
+							if strings.Contains(fs[0].Type.Name, ".") {
+								parts := strings.Split(fs[0].Type.Name, ".")
+								typeName := parts[len(parts)-1]
+								// 从当前作用域获取正确的命名空间
+								correctNamespace := ""
+								// 如果作用域中没有命名空间，尝试从 includes 中获取
+								for _, inc := range s.includes {
+									if inc != nil && inc.Scope != nil {
+										//typeName 是不是在 inc 中
+										if inc.Scope.globals.Get(typeName) != "" {
+											// log.Printf("调试: %s 在 %s 中", typeName, inc.PackageName)
+											correctNamespace = inc.PackageName
+											break
+										}
+									}
+								}
+								var fullTypeName string
+								if correctNamespace == "" {
+									fullTypeName = typeName // 构建完整的类型名，如 "test.User"
+								} else {
+									fullTypeName = correctNamespace + "." + typeName // 构建完整的类型名，如 "test.User"
+								}
+
+								// 直接使用完整的类型名
+								fun.responseType = ensureType(TypeName("*"+fullTypeName), nil)
+							} else {
+								resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
+								fun.responseType = ensureType(resolvedType, err)
+							}
+						} else {
+							// 如果不是 success 字段，可能是展开后的字段，需要找到原始类型
+							resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
+							fun.responseType = ensureType(resolvedType, err)
+						}
+					}
 					fs = fs[1:]
 				}
 				for _, f := range fs {

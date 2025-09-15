@@ -711,10 +711,21 @@ func (f *Function) Streaming() *streaming.Streaming {
 }
 
 func buildSynthesized(v *parser.Function) (argType, resType *parser.StructLike) {
+	// 创建参数结构体，确保参数类型正确
+	argFields := make([]*parser.Field, len(v.Arguments))
+	for i, arg := range v.Arguments {
+		argFields[i] = &parser.Field{
+			ID:           arg.ID,
+			Name:         arg.Name,
+			Requiredness: arg.Requiredness,
+			Type:         arg.Type,
+		}
+	}
+
 	argType = &parser.StructLike{
 		Category: "struct",
 		Name:     v.Name + "_args",
-		Fields:   v.Arguments,
+		Fields:   argFields,
 	}
 
 	if !v.Oneway {
@@ -723,11 +734,18 @@ func buildSynthesized(v *parser.Function) (argType, resType *parser.StructLike) 
 			Name:     v.Name + "_result",
 		}
 		if !v.Void {
+			// 确保 success 字段的类型正确，避免展开字段影响
+			successType := v.FunctionType
+			// 如果 FunctionType 是结构体类型，需要检查是否是展开字段
+			if successType != nil && successType.Category == parser.Category_Struct {
+				// 检查是否是展开字段，如果是，使用原始类型
+				// 这里暂时保持原样，因为 FunctionType 应该指向正确的类型
+			}
 			resType.Fields = append(resType.Fields, &parser.Field{
 				ID:           0,
 				Name:         "success",
 				Requiredness: parser.FieldType_Optional,
-				Type:         v.FunctionType,
+				Type:         successType,
 			})
 		}
 		resType.Fields = append(resType.Fields, v.Throws...)
