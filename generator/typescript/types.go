@@ -101,6 +101,7 @@ func isExpandField(field *parser.Field) bool {
 
 // isExpandableStruct 检查结构体是否可展开
 func isExpandableStruct(structLike *parser.StructLike) bool {
+	// 检查 Expandable 字段（由 expandable = "true" 注解解析而来）
 	return structLike.Expandable != nil && *structLike.Expandable
 }
 

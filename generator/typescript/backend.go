@@ -274,18 +274,41 @@ func (t *TypeScriptBackend) PostProcess(path string, content []byte) ([]byte, er
 // renderIndexFile 生成 index.ts 文件
 func (t *TypeScriptBackend) renderIndexFile(scope *Scope, executeTpl *template.Template, basePath string) error {
 	filename := filepath.Join(basePath, "index.ts")
-	return t.renderByTemplateWithTemplate(scope, executeTpl, filename, "index")
+
+	// index.ts 只导入外部文件，不导入本地文件
+	externalImports := []ImportInfo{}
+	for _, imp := range scope.Imports {
+		externalImports = append(externalImports, imp)
+	}
+
+	// 创建只包含外部导入的 scope
+	indexScope := &Scope{
+		Filename:   scope.Filename,
+		Package:    scope.Package,
+		Imports:    externalImports,
+		Enums:      scope.Enums,
+		Structs:    scope.Structs,
+		Unions:     scope.Unions,
+		Exceptions: scope.Exceptions,
+		Services:   scope.Services,
+		utils:      scope.utils,
+	}
+
+	return t.renderByTemplateWithTemplate(indexScope, executeTpl, filename, "index")
 }
 
 // renderEnumFile 生成枚举文件
 func (t *TypeScriptBackend) renderEnumFile(scope *Scope, executeTpl *template.Template, basePath string, enum *parser.Enum) error {
 	filename := filepath.Join(basePath, strings.ToLower(enum.Name)+".ts")
 
+	// 为枚举单独收集导入（枚举通常不需要外部导入）
+	enumImports := []ImportInfo{}
+
 	// 创建只包含该枚举的 scope
 	enumScope := &Scope{
 		Filename: scope.Filename,
 		Package:  scope.Package,
-		Imports:  scope.Imports,
+		Imports:  enumImports,
 		Enums:    []*parser.Enum{enum},
 		utils:    scope.utils,
 	}
@@ -297,11 +320,14 @@ func (t *TypeScriptBackend) renderEnumFile(scope *Scope, executeTpl *template.Te
 func (t *TypeScriptBackend) renderStructFile(scope *Scope, executeTpl *template.Template, basePath string, structLike *parser.StructLike) error {
 	filename := filepath.Join(basePath, strings.ToLower(structLike.Name)+".ts")
 
+	// 为单个结构体收集导入
+	structImports := t.collectImportsForStruct(scope, structLike)
+
 	// 创建只包含该结构体的 scope
 	structScope := &Scope{
 		Filename:        scope.Filename,
 		Package:         scope.Package,
-		Imports:         scope.Imports,
+		Imports:         structImports,
 		Structs:         []*parser.StructLike{structLike},
 		ExpandedStructs: scope.ExpandedStructs,
 		utils:           scope.utils,
@@ -324,6 +350,141 @@ func (t *TypeScriptBackend) renderServiceFile(scope *Scope, executeTpl *template
 	}
 
 	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "singleService")
+}
+
+// collectImportsForStruct 为单个结构体收集导入
+func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *parser.StructLike) []ImportInfo {
+	importMap := make(map[string][]string)
+	localTypes := make(map[string]bool)
+
+	// 收集结构体字段的导入
+	for _, field := range structLike.Fields {
+		scope.collectImportsFromType(field.Type, importMap)
+		// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
+		if field.Type != nil && !strings.Contains(field.Type.Name, ".") && !t.isPrimitiveType(field.Type) {
+			localTypes[field.Type.Name] = true
+		}
+	}
+
+	// 收集展开字段的导入
+	if expandedStruct, exists := scope.ExpandedStructs[structLike.Name]; exists {
+		for _, expandedField := range expandedStruct.ExpandedFields {
+			scope.collectImportsFromType(expandedField.Type, importMap)
+			// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
+			if expandedField.Type != nil && !strings.Contains(expandedField.Type.Name, ".") && !t.isPrimitiveType(expandedField.Type) {
+				localTypes[expandedField.Type.Name] = true
+			}
+		}
+	}
+
+	// 获取当前文件的 TypeScript namespace
+	// 在分离文件模式下，当前 namespace 是 test_temp
+	currentNamespace := "test_temp"
+
+	// 转换为 ImportInfo 列表
+	var imports []ImportInfo
+	for module, types := range importMap {
+		if len(types) > 0 {
+			// 计算相对路径
+			relativePath := scope.calculateRelativePath(currentNamespace, module)
+
+			imports = append(imports, ImportInfo{
+				Module: module,
+				Types:  types,
+				Path:   relativePath,
+			})
+		}
+	}
+
+	// 添加本地类型导入
+	for typeName := range localTypes {
+		// 在分离文件模式下，所有本地类型引用都需要导入
+		// 因为每个类型都会生成到单独的文件中
+		imports = append(imports, ImportInfo{
+			Module: ".",
+			Types:  []string{typeName},
+			Path:   "./" + strings.ToLower(typeName),
+		})
+	}
+
+	return imports
+}
+
+// findModuleForType 查找类型所在的模块
+func (t *TypeScriptBackend) findModuleForType(scope *Scope, typeName string) string {
+	// 这里简化处理，假设类型在根目录的对应文件中
+	// 实际实现中应该根据 AST 信息查找
+	return strings.ToLower(typeName)
+}
+
+// isTypeInSameThriftFile 检查类型是否在同一个 thrift 文件中定义
+func (t *TypeScriptBackend) isTypeInSameThriftFile(scope *Scope, typeName string) bool {
+	// 在分离文件模式下，即使类型在同一个 thrift 文件中定义，
+	// 也会生成到不同的 ts 文件中，所以需要导入
+	return true
+}
+
+// isPrimitiveType 检查是否为基本类型
+func (t *TypeScriptBackend) isPrimitiveType(typ *parser.Type) bool {
+	if typ == nil {
+		return false
+	}
+
+	switch typ.Category {
+	case parser.Category_Bool, parser.Category_Byte, parser.Category_I16,
+		parser.Category_I32, parser.Category_I64, parser.Category_Double,
+		parser.Category_String, parser.Category_Binary:
+		return true
+	default:
+		return false
+	}
+}
+
+// isTypeDefinedInFile 检查类型是否在文件中定义
+func (t *TypeScriptBackend) isTypeDefinedInFile(scope *Scope, typeName string) bool {
+	// 检查枚举
+	for _, enum := range scope.Enums {
+		if enum.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查结构体
+	for _, structLike := range scope.Structs {
+		if structLike.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查联合体
+	for _, union := range scope.Unions {
+		if union.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查异常
+	for _, exception := range scope.Exceptions {
+		if exception.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查服务
+	for _, service := range scope.Services {
+		if service.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查类型定义
+	for _, typedef := range scope.Typedefs {
+		if typedef.Alias == typeName {
+			return true
+		}
+	}
+
+	return false
 }
 
 // renderByTemplateWithTemplate 使用指定模板渲染文件

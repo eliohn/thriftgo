@@ -216,6 +216,11 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 				module := parts[0]
 				typeName := parts[1]
 
+				// 检查是否是当前文件中定义的类型
+				if s.isTypeDefinedInCurrentFile(typeName) {
+					return
+				}
+
 				// 避免重复添加
 				types := importMap[module]
 				found := false
@@ -228,6 +233,13 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 				if !found {
 					importMap[module] = append(types, typeName)
 				}
+			}
+		} else {
+			// 处理本地类型引用（不包含点号）
+			// 检查是否是当前文件中定义的类型
+			if !s.isTypeDefinedInCurrentFile(typ.Name) {
+				// 这是一个未定义的类型，可能是错误
+				return
 			}
 		}
 	}
@@ -459,13 +471,53 @@ func (u *CodeUtils) getTypeScriptNamespace(ast *parser.Thrift) string {
 
 // calculateRelativePath 计算相对路径
 func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) string {
-	// 如果当前文件没有 namespace，目标文件也没有 namespace，直接使用模块名
+	// 如果当前文件没有 namespace，目标文件也没有 namespace，使用相对路径
 	if currentNamespace == "" {
-		return targetModule
+		return "./" + targetModule
 	}
 
-	// 如果目标模块没有对应的 TypeScript namespace，使用 ../
+	// 在分离文件模式下，外部模块都在上级目录
 	return "../" + targetModule
+}
+
+// isTypeDefinedInCurrentFile 检查类型是否在当前文件中定义
+func (s *Scope) isTypeDefinedInCurrentFile(typeName string) bool {
+	// 检查枚举
+	for _, enum := range s.Enums {
+		if enum.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查结构体
+	for _, structLike := range s.Structs {
+		if structLike.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查联合体
+	for _, union := range s.Unions {
+		if union.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查异常
+	for _, exception := range s.Exceptions {
+		if exception.Name == typeName {
+			return true
+		}
+	}
+
+	// 检查类型别名
+	for _, typedef := range s.Typedefs {
+		if typedef.Alias == typeName {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetFilename 获取生成的文件名
