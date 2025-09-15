@@ -568,8 +568,8 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						// 类型解析将在 resolveTypesAndValues 阶段进行
 
 						//log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
-						// 为展开字段生成正确的方法名称
-						expandedFieldName := st.scope.Add(string(Name(structField.Name)), structField.Name)
+						// 为展开字段生成正确的方法名称，确保首字母大写
+						expandedFieldName := st.scope.Add(common.UpperFirstRune(string(Name(structField.Name))), structField.Name)
 						expandedField := &Field{
 							Field:               &adjustedField,
 							name:                Name(expandedFieldName),
@@ -776,7 +776,7 @@ func annotationContainsTrue(annos parser.Annotations, anno string) bool {
 	return false
 }
 
-// 添加辅助函数用于判断是否为基础类型
+// isBaseType 添加辅助函数用于判断是否为基础类型
 func isBaseType(typeName string) bool {
 	baseTypes := map[string]bool{
 		"bool":   true,
