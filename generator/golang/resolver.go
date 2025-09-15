@@ -99,7 +99,29 @@ func (r *Resolver) GetTypeName(g *Scope, t *parser.Type) (name TypeName, err err
 
 func (r *Resolver) getTypeName(g *Scope, t *parser.Type) (name string, err error) {
 	if ref := t.GetReference(); ref != nil {
-		if strings.Contains(t.Name, ".") {
+		// 使用引用索引直接获取正确的 include
+		if int(ref.GetIndex()) < len(g.includes) {
+			inc := g.includes[ref.GetIndex()]
+			if inc != nil && inc.Scope != nil {
+				if strings.Contains(t.Name, ".") {
+					parts := strings.Split(t.Name, ".")
+					if len(parts) >= 2 {
+						typeName := parts[len(parts)-1]
+						name = inc.Scope.globals.Get(typeName)
+						if name != "" {
+							g = inc.Scope
+						}
+					}
+				} else {
+					name = inc.Scope.globals.Get(t.Name)
+					if name != "" {
+						g = inc.Scope
+					}
+				}
+			}
+		}
+		// 如果通过引用索引没有找到，回退到按命名空间查找
+		if name == "" && strings.Contains(t.Name, ".") {
 			parts := strings.Split(t.Name, ".")
 			if len(parts) >= 2 {
 				namespace := strings.Join(parts[:len(parts)-1], ".")
@@ -160,6 +182,18 @@ func (r *Resolver) getTypeName(g *Scope, t *parser.Type) (name string, err error
 	if g.namespace != r.root.namespace {
 		pkg := r.root.includeIDL(r.util, g.ast)
 		name = pkg + "." + name
+	} else if strings.Contains(t.Name, ".") {
+		// 如果类型名包含命名空间，但当前作用域不匹配，尝试从 includes 中获取正确的包名
+		parts := strings.Split(t.Name, ".")
+		if len(parts) >= 2 {
+			namespace := strings.Join(parts[:len(parts)-1], ".")
+			for _, inc := range r.root.includes {
+				if inc != nil && inc.Scope != nil && inc.PackageName == namespace {
+					name = inc.PackageName + "." + name
+					break
+				}
+			}
+		}
 	}
 	return
 }
