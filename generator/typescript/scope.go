@@ -1,0 +1,518 @@
+// Copyright 2024 CloudWeGo Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package typescript
+
+import (
+	"path/filepath"
+	"strings"
+
+	"github.com/cloudwego/thriftgo/generator/backend"
+	"github.com/cloudwego/thriftgo/parser"
+	"github.com/cloudwego/thriftgo/plugin"
+)
+
+// Scope 表示 TypeScript 代码生成的作用域
+type Scope struct {
+	// 文件信息
+	Filename string
+	Package  string
+
+	// 导入
+	Imports []ImportInfo
+
+	// 定义
+	Constants  []*parser.Constant
+	Typedefs   []*parser.Typedef
+	Enums      []*parser.Enum
+	Structs    []*parser.StructLike
+	Unions     []*parser.StructLike
+	Exceptions []*parser.StructLike
+	Services   []*parser.Service
+
+	// 展开的结构体（用于处理 expandable 注解）
+	ExpandedStructs map[string]*ExpandedStruct
+
+	// 工具
+	utils *CodeUtils
+}
+
+// ExpandedStruct 表示展开后的结构体
+type ExpandedStruct struct {
+	OriginalStruct     *parser.StructLike
+	ExpandedFields     []*parser.Field
+	ExpandedFieldNames map[string]bool // 记录哪些字段被展开了
+}
+
+// ImportInfo 表示导入信息
+type ImportInfo struct {
+	Module string
+	Types  []string
+}
+
+// IsEmpty 检查作用域是否为空
+func (s *Scope) IsEmpty() bool {
+	return len(s.Constants) == 0 &&
+		len(s.Typedefs) == 0 &&
+		len(s.Enums) == 0 &&
+		len(s.Structs) == 0 &&
+		len(s.Unions) == 0 &&
+		len(s.Exceptions) == 0 &&
+		len(s.Services) == 0
+}
+
+// GetPackageName 获取包名
+func (s *Scope) GetPackageName() string {
+	if s.Package != "" {
+		return s.Package
+	}
+	// 从文件名生成包名
+	name := filepath.Base(s.Filename)
+	name = strings.TrimSuffix(name, ".thrift")
+	return strings.ToLower(name)
+}
+
+// GetFileName 获取生成的文件名
+func (s *Scope) GetFileName() string {
+	base := filepath.Base(s.Filename)
+	name := strings.TrimSuffix(base, ".thrift")
+	return name + ".ts"
+}
+
+// BuildScope 构建 TypeScript 作用域
+func BuildScope(utils *CodeUtils, ast *parser.Thrift) (*Scope, error) {
+	scope := &Scope{
+		Filename:        ast.Filename,
+		Package:         "", // Thrift 结构没有 Name 字段
+		utils:           utils,
+		ExpandedStructs: make(map[string]*ExpandedStruct),
+	}
+
+	// 收集常量
+	for _, constant := range ast.Constants {
+		scope.Constants = append(scope.Constants, constant)
+	}
+
+	// 收集类型定义
+	for _, typedef := range ast.Typedefs {
+		scope.Typedefs = append(scope.Typedefs, typedef)
+	}
+
+	// 收集枚举
+	for _, enum := range ast.Enums {
+		scope.Enums = append(scope.Enums, enum)
+	}
+
+	// 收集结构体
+	for _, structLike := range ast.Structs {
+		scope.Structs = append(scope.Structs, structLike)
+	}
+
+	// 收集联合体
+	for _, union := range ast.Unions {
+		scope.Unions = append(scope.Unions, union)
+	}
+
+	// 收集异常
+	for _, exception := range ast.Exceptions {
+		scope.Exceptions = append(scope.Exceptions, exception)
+	}
+
+	// 收集服务
+	for _, service := range ast.Services {
+		scope.Services = append(scope.Services, service)
+	}
+
+	// 处理展开的结构体
+	scope.processExpandedStructs(ast)
+
+	// 收集导入信息（在展开结构体之后，以便收集展开字段的导入）
+	scope.collectImports(ast)
+
+	return scope, nil
+}
+
+// collectImports 收集导入信息
+func (s *Scope) collectImports(ast *parser.Thrift) {
+	importMap := make(map[string][]string)
+
+	// 遍历所有结构体，收集外部类型引用
+	for _, structLike := range ast.Structs {
+		s.collectImportsFromStruct(structLike, importMap)
+	}
+
+	for _, union := range ast.Unions {
+		s.collectImportsFromStruct(union, importMap)
+	}
+
+	for _, exception := range ast.Exceptions {
+		s.collectImportsFromStruct(exception, importMap)
+	}
+
+	// 转换为 ImportInfo 列表
+	for module, types := range importMap {
+		if len(types) > 0 {
+			s.Imports = append(s.Imports, ImportInfo{
+				Module: module,
+				Types:  types,
+			})
+		}
+	}
+}
+
+// collectImportsFromStruct 从结构体中收集导入信息
+func (s *Scope) collectImportsFromStruct(structLike *parser.StructLike, importMap map[string][]string) {
+	for _, field := range structLike.Fields {
+		s.collectImportsFromType(field.Type, importMap)
+	}
+
+	// 收集展开字段的导入信息
+	if expandedStruct, exists := s.ExpandedStructs[structLike.Name]; exists {
+		for _, expandedField := range expandedStruct.ExpandedFields {
+			s.collectImportsFromType(expandedField.Type, importMap)
+		}
+	}
+}
+
+// collectImportsFromType 从类型中收集导入信息
+func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]string) {
+	if typ == nil {
+		return
+	}
+
+	// 处理容器类型
+	if typ.ValueType != nil {
+		s.collectImportsFromType(typ.ValueType, importMap)
+	}
+	if typ.KeyType != nil {
+		s.collectImportsFromType(typ.KeyType, importMap)
+	}
+
+	// 处理外部类型引用
+	if typ.Name != "" && typ.Category >= parser.Category_Enum {
+		// 检查是否是外部引用（包含点号）
+		if strings.Contains(typ.Name, ".") {
+			parts := strings.Split(typ.Name, ".")
+			if len(parts) == 2 {
+				module := parts[0]
+				typeName := parts[1]
+
+				// 避免重复添加
+				types := importMap[module]
+				found := false
+				for _, t := range types {
+					if t == typeName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					importMap[module] = append(types, typeName)
+				}
+			}
+		}
+	}
+}
+
+// processExpandedStructs 处理展开的结构体
+func (s *Scope) processExpandedStructs(ast *parser.Thrift) {
+	// 遍历所有结构体，检查是否有展开的字段
+	for _, structLike := range ast.Structs {
+		expandedFields, expandedFieldNames := s.collectExpandedFields(structLike, ast)
+		if len(expandedFields) > 0 {
+			s.ExpandedStructs[structLike.Name] = &ExpandedStruct{
+				OriginalStruct:     structLike,
+				ExpandedFields:     expandedFields,
+				ExpandedFieldNames: expandedFieldNames,
+			}
+		}
+	}
+}
+
+// collectExpandedFields 收集展开的字段
+func (s *Scope) collectExpandedFields(structLike *parser.StructLike, ast *parser.Thrift) ([]*parser.Field, map[string]bool) {
+	var expandedFields []*parser.Field
+	expandedFieldNames := make(map[string]bool)
+
+	for _, field := range structLike.Fields {
+		// 检查字段是否应该展开
+		shouldExpand := isExpandField(field)
+
+		// 检查引用的结构体是否可展开
+		referencedStruct := s.getReferencedStruct(field, ast)
+		structIsExpandable := referencedStruct != nil && isExpandableStruct(referencedStruct)
+
+		if shouldExpand || structIsExpandable {
+			// 记录原始字段被展开了
+			expandedFieldNames[field.Name] = true
+
+			// 展开字段，直接使用引用结构体的字段名，不添加前缀
+			if referencedStruct != nil {
+				for _, refField := range referencedStruct.Fields {
+					expandedField := &parser.Field{
+						Name:         refField.Name, // 直接使用原始字段名
+						Type:         refField.Type,
+						ID:           refField.ID,
+						Requiredness: refField.Requiredness,
+						Default:      refField.Default,
+						Annotations:  refField.Annotations,
+					}
+					expandedFields = append(expandedFields, expandedField)
+				}
+			}
+		}
+	}
+
+	return expandedFields, expandedFieldNames
+}
+
+// getReferencedStruct 获取引用的结构体
+func (s *Scope) getReferencedStruct(field *parser.Field, ast *parser.Thrift) *parser.StructLike {
+	if field.Type == nil || !field.Type.Category.IsStructLike() {
+		return nil
+	}
+
+	typeName := field.Type.Name
+	if !strings.Contains(typeName, ".") {
+		// 在当前 AST 中查找结构体
+		for _, structLike := range ast.Structs {
+			if structLike.Name == typeName {
+				return structLike
+			}
+		}
+
+		for _, union := range ast.Unions {
+			if union.Name == typeName {
+				return union
+			}
+		}
+
+		for _, exception := range ast.Exceptions {
+			if exception.Name == typeName {
+				return exception
+			}
+		}
+		return nil
+	}
+
+	// 处理跨文件引用，需要在所有包含的文件中查找
+	parts := strings.Split(typeName, ".")
+	if len(parts) != 2 {
+		return nil
+	}
+
+	moduleName := parts[0]
+	structName := parts[1]
+
+	// 遍历所有包含的文件
+	for _, include := range ast.Includes {
+		if include.Path == moduleName+".thrift" {
+			// 在包含的文件中查找结构体
+			for _, structLike := range include.Reference.Structs {
+				if structLike.Name == structName {
+					return structLike
+				}
+			}
+
+			for _, union := range include.Reference.Unions {
+				if union.Name == structName {
+					return union
+				}
+			}
+
+			for _, exception := range include.Reference.Exceptions {
+				if exception.Name == structName {
+					return exception
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// CodeUtils TypeScript 代码生成工具
+type CodeUtils struct {
+	features  *Features
+	log       backend.LogFunc
+	rootScope *Scope
+}
+
+// Features TypeScript 生成特性
+type Features struct {
+	SkipEmpty          bool
+	GenerateInterfaces bool
+	GenerateClasses    bool
+	UseStrictMode      bool
+	UseES6Modules      bool
+}
+
+// NewCodeUtils 创建新的代码工具
+func NewCodeUtils(log backend.LogFunc) *CodeUtils {
+	return &CodeUtils{
+		features: &Features{
+			SkipEmpty:          false,
+			GenerateInterfaces: true,
+			GenerateClasses:    false,
+			UseStrictMode:      true,
+			UseES6Modules:      true,
+		},
+		log: log,
+	}
+}
+
+// Features 获取特性配置
+func (u *CodeUtils) Features() *Features {
+	return u.features
+}
+
+// SetRootScope 设置根作用域
+func (u *CodeUtils) SetRootScope(scope *Scope) {
+	u.rootScope = scope
+}
+
+// GetRootScope 获取根作用域
+func (u *CodeUtils) GetRootScope() *Scope {
+	return u.rootScope
+}
+
+// HandleOptions 处理生成选项
+func (u *CodeUtils) HandleOptions(options []plugin.Option) error {
+	// 这里可以处理 TypeScript 特定的选项
+	// 目前使用默认配置
+	return nil
+}
+
+// BuildFuncMap 构建模板函数映射
+func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
+	return map[string]interface{}{
+		"GetTypeScriptType":     GetTypeScriptType,
+		"GetFieldType":          GetFieldType,
+		"GetMethodSignature":    GetMethodSignature,
+		"GetInterfaceName":      GetInterfaceName,
+		"GetClassName":          GetClassName,
+		"GetEnumName":           GetEnumName,
+		"GetPropertyName":       GetPropertyName,
+		"GetConstantName":       GetConstantName,
+		"IsOptional":            IsOptional,
+		"GetDefaultValue":       GetDefaultValue,
+		"GetConstantValue":      GetConstantValue,
+		"IsExpandField":         isExpandField,
+		"IsExpandableStruct":    isExpandableStruct,
+		"GetExpandedFields":     func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
+		"GetExpandedFieldNames": func(structLike *parser.StructLike) map[string]bool { return u.getExpandedFieldNames(structLike) },
+		"IsFieldExpanded": func(field *parser.Field, expandedFields []*parser.Field) bool {
+			return u.isFieldExpanded(field, expandedFields)
+		},
+		"GetPackageName": func(s *Scope) string { return s.GetPackageName() },
+		"GetFileName":    func(s *Scope) string { return s.GetFileName() },
+		"ToTitle":        strings.Title,
+		"ToLower":        strings.ToLower,
+		"ToUpper":        strings.ToUpper,
+	}
+}
+
+// CombineOutputPath 组合输出路径
+func (u *CodeUtils) CombineOutputPath(basePath string, ast *parser.Thrift) string {
+	if basePath == "" {
+		return "."
+	}
+	return basePath
+}
+
+// GetFilename 获取生成的文件名
+func (u *CodeUtils) GetFilename(ast *parser.Thrift) string {
+	base := filepath.Base(ast.Filename)
+	name := strings.TrimSuffix(base, ".thrift")
+	return name + ".ts"
+}
+
+// getExpandedFields 获取结构体的展开字段
+func (u *CodeUtils) getExpandedFields(structLike *parser.StructLike) []*parser.Field {
+	if u.rootScope == nil {
+		return nil
+	}
+
+	expandedStruct, exists := u.rootScope.ExpandedStructs[structLike.Name]
+	if !exists {
+		return nil
+	}
+
+	return expandedStruct.ExpandedFields
+}
+
+// getExpandedFieldNames 获取结构体的展开字段名映射
+func (u *CodeUtils) getExpandedFieldNames(structLike *parser.StructLike) map[string]bool {
+	if u.rootScope == nil {
+		return nil
+	}
+
+	expandedStruct, exists := u.rootScope.ExpandedStructs[structLike.Name]
+	if !exists {
+		return nil
+	}
+
+	return expandedStruct.ExpandedFieldNames
+}
+
+// isFieldExpanded 检查字段是否被展开
+func (u *CodeUtils) isFieldExpanded(field *parser.Field, expandedFields []*parser.Field) bool {
+	// 检查字段是否应该展开
+	shouldExpand := isExpandField(field)
+	if shouldExpand {
+		return true
+	}
+
+	// 检查引用的结构体是否可展开
+	if field.Type != nil && field.Type.Category.IsStructLike() {
+		// 检查引用的结构体是否可展开
+		// 如果该字段引用的结构体是可展开的，则该字段应该被展开
+		if u.rootScope != nil {
+			// 重新获取引用的结构体来判断是否可展开
+			referencedStruct := u.getReferencedStruct(field)
+			if referencedStruct != nil && isExpandableStruct(referencedStruct) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// getReferencedStruct 获取引用的结构体（简化版本）
+func (u *CodeUtils) getReferencedStruct(field *parser.Field) *parser.StructLike {
+	if field.Type == nil || !field.Type.Category.IsStructLike() {
+		return nil
+	}
+
+	typeName := field.Type.Name
+	if !strings.Contains(typeName, ".") {
+		return nil
+	}
+
+	// 处理跨文件引用
+	parts := strings.Split(typeName, ".")
+	if len(parts) != 2 {
+		return nil
+	}
+
+	// 遍历所有包含的文件
+	if u.rootScope != nil {
+		// 这里需要从 AST 中获取包含信息，暂时简化处理
+		// 直接返回 nil，让调用方处理
+		return nil
+	}
+
+	return nil
+}

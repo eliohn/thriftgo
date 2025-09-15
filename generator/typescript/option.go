@@ -1,4 +1,4 @@
-// Copyright 2023 CloudWeGo Authors
+// Copyright 2024 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,6 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package version
+package typescript
 
-const ThriftgoVersion = "0.4.2-huidu"
+// 参数定义
+type param struct {
+	name string
+	desc string
+}
+
+var allParams = []param{
+	{
+		name: "skip_empty",
+		desc: "跳过空文件生成",
+	},
+	{
+		name: "generate_interfaces",
+		desc: "生成接口定义",
+	},
+	{
+		name: "generate_classes",
+		desc: "生成类定义",
+	},
+	{
+		name: "use_strict_mode",
+		desc: "使用严格模式",
+	},
+	{
+		name: "use_es6_modules",
+		desc: "使用 ES6 模块",
+	},
+	{
+		name: "output_dir",
+		desc: "输出目录",
+	},
+}
