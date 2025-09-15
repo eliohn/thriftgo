@@ -98,7 +98,6 @@ func (s *Scope) buildIncludes(cu *CodeUtils) {
 		if !inc.GetUsed() {
 			continue
 		}
-		log.Printf("调试: 添加包含文件 %d: %s", idx, inc.Reference.Filename)
 		s.includes[idx] = s.include(cu, inc.Reference)
 	}
 }
@@ -549,12 +548,12 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 				//log.Printf("struct %s is expandable: %t , shouldExpand: %t", referencedStruct.Name, structIsExpandable, shouldExpand)
 				if shouldExpand || structIsExpandable {
 					isExpandable = true
-					fieldNameSpace := ""
+					//fieldNameSpace := ""
 					// 如果f.Type.Name 有带命名空间，把命名空间提取出来 比如 base.MyData ，提取出 base, 要先判断一下有没有
 					if strings.Contains(f.Type.Name, ".") {
 						ns := strings.Split(f.Type.Name, ".")
 						ns = ns[:len(ns)-1]
-						fieldNameSpace = strings.Join(ns, ".")
+						//fieldNameSpace = strings.Join(ns, ".")
 					}
 
 					// Create expanded fields from the struct's fields
@@ -564,68 +563,26 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						adjustedField.ID = structField.ID + 1000 // Offset to avoid ID conflicts
 
 						// 修复：处理嵌套引用类型，如 enums.ErrorCode
-						if fieldNameSpace != "" && !isBaseType(structField.Type.Name) && !isHasNamespace(adjustedField.Type.Name) {
-							adjustedType := *structField.Type
-							// 如果字段类型本身已经包含了命名空间（如 enums.ErrorCode）
-							// 我们需要合并外部命名空间和内部命名空间
-							if strings.Contains(structField.Type.Name, ".") {
-								// 类型名已经包含命名空间，如 enums.ErrorCode
-								parts := strings.Split(structField.Type.Name, ".")
-								innerNamespace := strings.Join(parts[:len(parts)-1], ".")
-								typeName := parts[len(parts)-1]
-								adjustedType.Name = fieldNameSpace + "." + innerNamespace + "." + typeName
-							} else {
-								// 类型名不包含命名空间，直接添加外部命名空间
-								adjustedType.Name = fieldNameSpace + "." + structField.Type.Name
-							}
-							adjustedField.Type = &adjustedType
+						// 对于展开字段，我们不需要调整类型名称，因为展开字段应该使用原始的类型名称
+						// 类型解析将在 resolveTypesAndValues 阶段进行
 
-							// 如果有引用信息，也需要更新引用中的Name
-							if adjustedType.Reference != nil {
-								adjustedReference := *adjustedType.Reference
-								adjustedReference.Name = fieldNameSpace
-								adjustedType.Reference = &adjustedReference
-							}
-						}
-
-						log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
+						//log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
+						// 为展开字段生成正确的方法名称
+						expandedFieldName := st.scope.Add(string(Name(structField.Name)), structField.Name)
 						expandedField := &Field{
-							Field:     &adjustedField,
-							name:      Name(st.scope.Add(string(Name(structField.Name)), structField.Name)),
-							reader:    Name(st.scope.Get(_p("read:" + id2str(adjustedField.ID)))),
-							writer:    Name(st.scope.Get(_p("write:" + id2str(adjustedField.ID)))),
-							getter:    Name(st.scope.Get(_p("get:" + structField.Name))),
-							setter:    Name(st.scope.Get(_p("set:" + structField.Name))),
-							isset:     Name(st.scope.Get(_p("isset:" + structField.Name))),
-							deepEqual: Name(st.scope.Get(_p("deepequal:" + id2str(adjustedField.ID)))),
-							isNested:  false,
+							Field:               &adjustedField,
+							name:                Name(expandedFieldName),
+							reader:              Name("ReadField" + id2str(adjustedField.ID)),
+							writer:              Name("writeField" + id2str(adjustedField.ID)),
+							getter:              Name("Get" + expandedFieldName),
+							setter:              Name("Set" + expandedFieldName),
+							isset:               Name("IsSet" + expandedFieldName),
+							deepEqual:           Name("Field" + id2str(adjustedField.ID) + "DeepEqual"),
+							isNested:            false,
+							originalStructField: structField, // 设置原始结构体字段用于类型解析
 							//namespace: fieldNameSpace, // 设置字段的命名空间
 						}
-						// Resolve type for expanded field immediately
-						resolver := NewResolver(s, cu)
-						frugalResolver := NewFrugalResolver(s, cu)
-						//log.Printf("t : %v", t)
-						// Use ensureType and ensureCode functions like in resolveTypesAndValues
-						ensureType := func(t TypeName, e error) TypeName {
-							if e != nil {
-								log.Printf("[1]Error resolving type for expanded field %s: %v", expandedField.Field.Name, e)
-								return ""
-							}
-							return t
-						}
-						ensureCode := func(c Code, e error) Code {
-							if e != nil {
-								log.Printf("[2]Error resolving code for expanded field %s: %v", expandedField.Field.Name, e)
-								return ""
-							}
-							return c
-						}
-						expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(expandedField.Field))
-						expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(expandedField.Field.Type))
-						expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(expandedField.Field))
-						if expandedField.IsSetDefault() {
-							expandedField.defaultValue = ensureCode(resolver.GetFieldInit(expandedField.Field))
-						}
+						// 类型解析将在 resolveTypesAndValues 阶段进行
 
 						expandedFields = append(expandedFields, expandedField)
 					}
@@ -726,16 +683,19 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 
 		// 处理展开字段的类型解析
 		for _, expandedField := range f.expandedFields {
-			// Use the original struct field for type resolution if available
-			fieldForResolution := expandedField.Field
-			if expandedField.originalStructField != nil {
-				fieldForResolution = expandedField.originalStructField
-			}
-			expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(fieldForResolution))
-			expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(fieldForResolution.Type))
-			expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(fieldForResolution))
+			// 使用调整后的字段进行类型解析，确保命名空间正确
+			expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(expandedField.Field))
+			expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(expandedField.Field.Type))
+			expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(expandedField.Field))
 			if expandedField.IsSetDefault() {
-				expandedField.defaultValue = ensureCode(resolver.GetFieldInit(fieldForResolution))
+				expandedField.defaultValue = ensureCode(resolver.GetFieldInit(expandedField.Field))
+			}
+			// 如果类型解析失败，尝试手动构建类型名称
+			if expandedField.typeName == "" && expandedField.Field.Type.Name != "" {
+				// 如果调整后的类型名包含命名空间，直接使用它
+				if strings.Contains(expandedField.Field.Type.Name, ".") {
+					expandedField.typeName = TypeName(expandedField.Field.Type.Name)
+				}
 			}
 		}
 	}

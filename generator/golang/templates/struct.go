@@ -62,6 +62,13 @@ func (p *{{$TypeName}}) InitDefault() {
 	{{- if .IsSetDefault}}
 	p.{{.GoName}} = {{.DefaultValue}}
 	{{- end}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+		{{- if .IsSetDefault}}
+	p.{{.GoName}} = {{.DefaultValue}}
+		{{- end}}
+		{{- end}}{{/* range .ExpandedFields */}}
+	{{- end}}{{/* if .IsExpandable */}}
 {{- end}}
 }
 
@@ -76,6 +83,15 @@ func (p *{{$TypeName}}) CountSetFields{{$TypeName}}() int {
 		count++
 	}
 	{{- end}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+		{{- if SupportIsSet .Field}}
+	if p.{{.IsSetter}}() {
+		count++
+	}
+		{{- end}}
+		{{- end}}{{/* range .ExpandedFields */}}
+	{{- end}}{{/* if .IsExpandable */}}
 	{{- end}}
 	return count
 }
@@ -114,7 +130,13 @@ func (p *{{$TypeName}}) Pass_FieldMask(fm *fieldmask.FieldMask) {
 
 var fieldIDToName_{{$TypeName}} = map[int16]string{
 {{- range .Fields}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
 	{{.ID}}: "{{.Name}}",
+		{{- end}}
+	{{- else}}
+	{{.ID}}: "{{.Name}}",
+	{{- end}}
 {{- end}}{{/* range .Fields */}}
 }
 
@@ -183,6 +205,13 @@ var StructLikeDefault = `
 	{{- if .IsSetDefault -}}
 		{{.GoName}}: {{.DefaultValue}},
 	{{end}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+		{{- if .IsSetDefault -}}
+		{{.GoName}}: {{.DefaultValue}},
+		{{end}}
+		{{- end}}{{/* range .ExpandedFields */}}
+	{{- end}}{{/* if .IsExpandable */}}
 {{- end}}
 {{- end -}}`
 
@@ -208,6 +237,13 @@ func (p *{{$TypeName}}) Read(iprot thrift.TProtocol) (err error) {
 	{{- if .Requiredness.IsRequired}}
 	var isset{{.GoName}} bool = false
 	{{- end}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+		{{- if .Requiredness.IsRequired}}
+	var isset{{.GoName}} bool = false
+		{{- end}}
+		{{- end}}{{/* range .ExpandedFields */}}
+	{{- end}}{{/* if .IsExpandable */}}
 	{{- end}}
 
 	if _, err = iprot.ReadStructBegin(); err != nil {
@@ -225,6 +261,7 @@ func (p *{{$TypeName}}) Read(iprot thrift.TProtocol) (err error) {
 		{{if or (gt (len .Fields) 0) Features.KeepUnknownFields}}
 		switch fieldId {
 		{{- range .Fields}}
+		{{- if not .IsExpandable}}
 		{{- $isBaseVal := .Type | IsBaseType}}
 		case {{.ID}}:
 			if fieldTypeId == thrift.{{.Type | GetTypeIDConstant }} {
@@ -237,6 +274,22 @@ func (p *{{$TypeName}}) Read(iprot thrift.TProtocol) (err error) {
 			} else if err = iprot.Skip(fieldTypeId); err != nil {
 				goto SkipFieldError
 			}
+		{{- else}}
+		{{- range .ExpandedFields}}
+		{{- $expandedIsBaseVal := .Type | IsBaseType}}
+		case {{.ID}}:
+			if fieldTypeId == thrift.{{.Type | GetTypeIDConstant }} {
+				if err = p.{{.Reader}}(iprot); err != nil {
+					goto ReadFieldError
+				}
+				{{- if .Requiredness.IsRequired}}
+				isset{{.GoName}} = true
+				{{- end}}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		{{- end}}{{/* range .ExpandedFields */}}
+		{{- end}}{{/* if .IsExpandable */}}
 		{{- end}}{{/* range .Fields */}}
 		default:
 			{{- template "HandleUnknownFields"}}
@@ -262,6 +315,17 @@ func (p *{{$TypeName}}) Read(iprot thrift.TProtocol) (err error) {
 		goto RequiredFieldNotSetError
 	}
 	{{- end}}
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+		{{- if .Requiredness.IsRequired}}
+	{{ $RequiredFieldNotSetError = true }}
+	if !isset{{.GoName}} {
+		fieldId = {{.ID}}
+		goto RequiredFieldNotSetError
+	}
+		{{- end}}
+		{{- end}}{{/* range .ExpandedFields */}}
+	{{- end}}{{/* if .IsExpandable */}}
 	{{- end}}{{/* range .Fields */}}
 	return nil
 ReadStructBeginError:
@@ -319,6 +383,7 @@ var StructLikeReadField = `
 {{- UseStdLibrary "thrift"}}
 {{- $TypeName := .GoName}}
 {{- range .Fields}}
+{{- if not .IsExpandable}}
 {{$FieldName := .GoName}}
 {{- $isBaseVal := .Type | IsBaseType -}}
 {{- if not Features.ApacheAdaptor -}}
@@ -340,6 +405,32 @@ func (p *{{$TypeName}}) {{.Reader}}(iprot thrift.TProtocol) error {
 	return nil
 }
 {{- end}}{{/* if Features.ApacheAdaptor */}}
+{{- end}}
+{{- if .IsExpandable}}
+	{{- range .ExpandedFields}}
+{{$ExpandedFieldName := .GoName}}
+{{- $expandedIsBaseVal := .Type | IsBaseType -}}
+{{- if not Features.ApacheAdaptor -}}
+func (p *{{$TypeName}}) {{.Reader}}(iprot thrift.TProtocol) error {
+	{{- if Features.WithFieldMask}}
+	if {{if $expandedIsBaseVal}}_{{else}}fm{{end}}, ex := p._fieldmask.Field({{.ID}}); ex {
+	{{- end}}
+	{{$ctx := (MkRWCtx .).WithFieldMask "fm"}}
+	{{- $target := print $ctx.Target }}
+	{{- $ctx = $ctx.WithDecl.WithTarget "_field"}}
+	{{- template "FieldRead" $ctx}}
+	{{/* line break */}}
+	{{- $target}} = _field
+	{{- if Features.WithFieldMask}}
+	} else if err := iprot.Skip(thrift.{{.Type | GetTypeIDConstant}}); err != nil {
+		return err
+	}
+	{{- end}}
+	return nil
+}
+{{- end}}{{/* if Features.ApacheAdaptor */}}
+	{{- end}}{{/* range .ExpandedFields */}}
+{{- end}}{{/* if .IsExpandable */}}
 {{- end}}{{/* range .Fields */}}
 {{- end}}{{/* define "StructLikeReadField" */}}
 `
@@ -373,11 +464,19 @@ func (p *{{$TypeName}}) Write(oprot thrift.TProtocol) (err error) {
 	}
 	if p != nil {
 		{{- range .Fields}}
+		{{- if not .IsExpandable}}
 		if err = p.{{.Writer}}(oprot); err != nil {
 			fieldId = {{.ID}}
 			goto WriteFieldError
 		}
-		
+		{{- else}}
+		{{- range .ExpandedFields}}
+		if err = p.{{.Writer}}(oprot); err != nil {
+			fieldId = {{.ID}}
+			goto WriteFieldError
+		}
+		{{- end}}{{/* range .ExpandedFields */}}
+		{{- end}}{{/* if .IsExpandable */}}
 		{{- end}}{{/* range .Fields */}}
 		{{- if Features.KeepUnknownFields}}
 		if err = p._unknownFields.Write(oprot); err != nil {
@@ -421,6 +520,7 @@ var StructLikeWriteField = `
 {{- UseStdLibrary "thrift"}}
 {{- $TypeName := .GoName}}
 {{- range .Fields}}
+{{- if not .IsExpandable}}
 {{- $FieldName := .GoName}}
 {{- $IsSetName := .IsSetter}}
 {{- $TypeID := .Type | GetTypeIDConstant }}
@@ -473,6 +573,63 @@ WriteFieldEndError:
 	return thrift.PrependError(fmt.Sprintf("%T write field {{.ID}} end error: ", p), err)
 }
 {{- end}}{{/* if Features.ApacheAdaptor */}}
+{{- end}}
+{{- if .IsExpandable}}
+	{{- range .ExpandedFields}}
+{{- $ExpandedFieldName := .GoName}}
+{{- $ExpandedIsSetName := .IsSetter}}
+{{- $ExpandedTypeID := .Type | GetTypeIDConstant }}
+{{- $expandedIsBaseVal := .Type | IsBaseType }}
+{{- if not Features.ApacheAdaptor -}}
+{{- UseStdLibrary "fmt"}}
+func (p *{{$TypeName}}) {{.Writer}}(oprot thrift.TProtocol) (err error) {
+	{{- if .Requiredness.IsOptional}}
+	if p.{{$ExpandedIsSetName}}() {
+	{{- end}}
+	{{- if Features.WithFieldMask}}
+	{{- if and .Requiredness.IsRequired (not Features.FieldMaskZeroRequired)}}
+	{{- if not $expandedIsBaseVal}}
+	fm, _ := p._fieldmask.Field({{.ID}})
+	{{- end}}
+	{{- else}}
+	if {{if $expandedIsBaseVal}}_{{else}}fm{{end}}, ex := p._fieldmask.Field({{.ID}}); ex { 
+	{{- end}}
+	{{- end}}
+	if err = oprot.WriteFieldBegin("{{.Name}}", thrift.{{$ExpandedTypeID}}, {{.ID}}); err != nil {
+		goto WriteFieldBeginError
+	}
+	{{- $ctx := (MkRWCtx .).WithFieldMask "fm"}}
+	{{- template "FieldWrite" $ctx}}
+	if err = oprot.WriteFieldEnd(); err != nil {
+		goto WriteFieldEndError
+	}
+	{{- if Features.WithFieldMask}}
+	{{- if Features.FieldMaskZeroRequired}}
+	} else {
+		if err = oprot.WriteFieldBegin("{{.Name}}", thrift.{{$ExpandedTypeID}}, {{.ID}}); err != nil {
+			goto WriteFieldBeginError
+		}
+		{{ ZeroWriter .Type "oprot" "WriteFieldBeginError" }}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	{{- else if not .Requiredness.IsRequired}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- if .Requiredness.IsOptional}}
+	}
+	{{- end}}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field {{.ID}} begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field {{.ID}} end error: ", p), err)
+}
+{{- end}}{{/* if Features.ApacheAdaptor */}}
+	{{- end}}{{/* range .ExpandedFields */}}
+{{- end}}{{/* if .IsExpandable */}}
 {{end}}{{/* range .Fields */}}
 {{- end}}{{/* define "StructLikeWriteField" */}}
 `
@@ -489,7 +646,7 @@ var FieldGetOrSet = `
 {{- $SetterName := .Setter}}
 {{- $IsSetName := .IsSetter}}
 
-{{if SupportIsSet .Field}}
+{{if and (SupportIsSet .Field) (not .IsExpandable)}}
 {{$DefaultVarName := printf "%s_%s_%s" $TypeName $FieldName "DEFAULT"}}
 var {{$DefaultVarName}} {{$DefaultVarTypeName}}
 {{- if .Default}} = {{.DefaultValue}}{{- end}}
@@ -510,7 +667,7 @@ func (p *{{$TypeName}}) {{$GetterName}}() (v {{$DefaultVarTypeName}}) {
 	{{- end}}
 }
 
-{{- else}}{{/*if SupportIsSet . */}}
+{{- else if not .IsExpandable}}{{/*if SupportIsSet . */}}
 
 func (p *{{$TypeName}}) {{$GetterName}}() (v {{$FieldTypeName}}) {
 	{{- if Features.NilSafe}}
@@ -524,10 +681,56 @@ func (p *{{$TypeName}}) {{$GetterName}}() (v {{$FieldTypeName}}) {
 }
 
 {{- end}}{{/* if SupportIsSet . */}}
+{{- if .IsExpandable}}
+	{{- range .ExpandedFields}}
+{{- $ExpandedFieldName := .GoName}}
+{{- $ExpandedFieldTypeName := .GoTypeName}}
+{{- $ExpandedDefaultVarTypeName := .DefaultTypeName}}
+{{- $ExpandedGetterName := .Getter}}
+{{- $ExpandedIsSetName := .IsSetter}}
+
+{{if SupportIsSet .Field}}
+{{$ExpandedDefaultVarName := printf "%s_%s_%s" $TypeName $ExpandedFieldName "DEFAULT"}}
+var {{$ExpandedDefaultVarName}} {{$ExpandedDefaultVarTypeName}}
+{{- if .Default}} = {{.DefaultValue}}{{- end}}
+
+func (p *{{$TypeName}}) {{$ExpandedGetterName}}() (v {{$ExpandedDefaultVarTypeName}}) {
+	{{- if Features.NilSafe}}
+	if p == nil {
+		return
+	}
+	{{- end}}
+	if !p.{{$ExpandedIsSetName}}() {
+		return {{$ExpandedDefaultVarName}}
+	}
+	{{- if and (NeedRedirect .Field) (IsBaseType .Type)}}
+	return *p.{{$ExpandedFieldName}}
+	{{- else}}
+	return p.{{$ExpandedFieldName}}
+	{{- end}}
+}
+
+{{- else}}{{/*if SupportIsSet . */}}
+
+func (p *{{$TypeName}}) {{$ExpandedGetterName}}() (v {{$ExpandedFieldTypeName}}) {
+	{{- if Features.NilSafe}}
+	if p != nil {
+		return p.{{$ExpandedFieldName}}
+	}
+	return
+	{{- else}}
+		return p.{{$ExpandedFieldName}}
+	{{- end}}{{/* if Features.NilSafe */}}
+}
+
+{{- end}}{{/* if SupportIsSet . */}}
+	{{- end}}{{/* range .ExpandedFields */}}
+{{- end}}{{/* if .IsExpandable */}}
 {{- end}}{{/* range .Fields */}}
 
 {{- if Features.GenerateSetter}}
 {{- range .Fields}}
+{{- if not .IsExpandable}}
 {{- $FieldName := .GoName}}
 {{- $FieldTypeName := .GoTypeName}}
 {{- $SetterName := .Setter}}
@@ -540,6 +743,23 @@ func (p *{{$TypeName}}) {{$SetterName}}(val {{$FieldTypeName}}) {
 	p.{{$FieldName}} = val
 }
 {{- end}}
+{{- end}}
+{{- if .IsExpandable}}
+	{{- range .ExpandedFields}}
+{{- $ExpandedFieldName := .GoName}}
+{{- $ExpandedFieldTypeName := .GoTypeName}}
+{{- $ExpandedSetterName := .Setter}}
+{{- if .IsResponseFieldOfResult}}
+func (p *{{$TypeName}}) {{$ExpandedSetterName}}(x interface{}) {
+    p.{{$ExpandedFieldName}} = x.({{$ExpandedFieldTypeName}})
+}
+{{- else}}
+func (p *{{$TypeName}}) {{$ExpandedSetterName}}(val {{$ExpandedFieldTypeName}}) {
+	p.{{$ExpandedFieldName}} = val
+}
+{{- end}}
+	{{- end}}{{/* range .ExpandedFields */}}
+{{- end}}{{/* if .IsExpandable */}}
 {{- end}}{{/* range .Fields */}}
 {{- end}}{{/* if Features.GenerateSetter */}}
 
@@ -555,7 +775,7 @@ var FieldIsSet = `
 {{- $IsSetName := .IsSetter}}
 {{- $FieldTypeName := .GoTypeName}}
 {{- $DefaultVarName := printf "%s_%s_%s" $TypeName $FieldName "DEFAULT"}}
-{{- if SupportIsSet .Field}}
+{{- if and (SupportIsSet .Field) (not .IsExpandable)}}
 func (p *{{$TypeName}}) {{$IsSetName}}() bool {
 	{{- if .IsSetDefault}}
 		{{- if IsBaseType .Type}}
@@ -572,6 +792,31 @@ func (p *{{$TypeName}}) {{$IsSetName}}() bool {
 	{{- end}}
 }
 {{end}}
+{{- if .IsExpandable}}
+	{{- range .ExpandedFields}}
+{{- $ExpandedFieldName := .GoName}}
+{{- $ExpandedIsSetName := .IsSetter}}
+{{- $ExpandedFieldTypeName := .GoTypeName}}
+{{- $ExpandedDefaultVarName := printf "%s_%s_%s" $TypeName $ExpandedFieldName "DEFAULT"}}
+{{- if SupportIsSet .Field}}
+func (p *{{$TypeName}}) {{$ExpandedIsSetName}}() bool {
+	{{- if .IsSetDefault}}
+		{{- if IsBaseType .Type}}
+			{{- if .Type.Category.IsBinary}}
+				return string(p.{{$ExpandedFieldName}}) != string({{$ExpandedDefaultVarName}})
+			{{- else}}
+				return p.{{$ExpandedFieldName}} != {{$ExpandedDefaultVarName}}
+			{{- end}}
+		{{- else}}{{/* container type or struct-like */}}
+			return p.{{$ExpandedFieldName}} != nil
+		{{- end}}
+	{{- else}}
+		return p.{{$ExpandedFieldName}} != nil
+	{{- end}}
+}
+{{end}}
+	{{- end}}{{/* range .ExpandedFields */}}
+{{- end}}{{/* if .IsExpandable */}}
 {{- end}}{{/* range .Fields */}}
 {{- end}}{{/* define "FieldIsSet" */}}
 `
