@@ -560,7 +560,8 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 					for _, structField := range referencedStruct.Fields {
 						// Create a new field with adjusted ID to avoid conflicts
 						adjustedField := *structField
-						adjustedField.ID = structField.ID + 1000 // Offset to avoid ID conflicts
+						// 使用字段原始ID * 1000 + 结构体字段ID作为偏移量，避免多个展开字段间的ID冲突
+						adjustedField.ID = structField.ID + (f.ID * 1000) // 使用字段ID作为偏移量基础
 
 						// 修复：处理嵌套引用类型，如 enums.ErrorCode
 						// 对于展开字段，我们不需要调整类型名称，因为展开字段应该使用原始的类型名称
