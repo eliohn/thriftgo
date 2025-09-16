@@ -725,31 +725,18 @@ func isHasNamespace(typeName string) bool {
 }
 
 // checkUnusedPackagesAfterExpansion checks which packages are not used after expanding fields
-// This method checks if there are still references to the original packages after expanding fields, and marks them as unused if not
+// This method checks if packages from expanded fields are used elsewhere, and marks them as unused if not
 func (s *Scope) checkUnusedPackagesAfterExpansion(cu *CodeUtils) {
-	// Collect all packages marked as used
-	usedPackages := make(map[string]bool)
-	for _, inc := range s.includes {
-		if inc != nil && inc.Scope != nil {
-			pkgName := s.includeIDL(cu, inc.Scope.ast)
-			// If the package is not in libNotUsed, it means it's marked as used
-			if _, exists := s.imports.libNotUsed[pkgName]; !exists {
-				usedPackages[inc.PackageName] = true
-			}
-		}
-	}
+	// Collect packages from expanded fields that were "removed"
+	expandedFieldPackages := s.collectExpandedFieldPackages()
 
-	// Check if these used packages still have actual references
+	// Collect all actually used packages
 	actualUsedPackages := s.collectActuallyUsedPackages()
 
-	// Re-mark unused packages
-	for _, inc := range s.includes {
-		if inc != nil && inc.Scope != nil {
-			pkgName := s.includeIDL(cu, inc.Scope.ast)
-			// If the package is marked as used but has no actual references, re-mark it as unused
-			if usedPackages[inc.PackageName] && !actualUsedPackages[inc.PackageName] {
-				s.imports.libNotUsed[pkgName] = true
-			}
+	// Mark packages as unused if they were only used in expanded fields and not used elsewhere
+	for pkgName := range expandedFieldPackages {
+		if !actualUsedPackages[pkgName] {
+			s.imports.libNotUsed[pkgName] = true
 		}
 	}
 }
@@ -807,7 +794,70 @@ func (s *Scope) collectActuallyUsedPackages() map[string]bool {
 		}
 	}
 
+	// Check all function argument and return types
+	for _, svc := range s.services {
+		for _, fun := range svc.functions {
+			// Check function argument types
+			for _, arg := range fun.arguments {
+				if arg.typeName != "" && strings.Contains(string(arg.typeName), ".") {
+					parts := strings.Split(string(arg.typeName), ".")
+					if len(parts) >= 2 {
+						ns := strings.Join(parts[:len(parts)-1], ".")
+						actualUsedPackages[ns] = true
+					}
+				}
+			}
+
+			// Check function return type
+			if fun.responseType != "" && strings.Contains(string(fun.responseType), ".") {
+				parts := strings.Split(string(fun.responseType), ".")
+				if len(parts) >= 2 {
+					ns := strings.Join(parts[:len(parts)-1], ".")
+					actualUsedPackages[ns] = true
+				}
+			}
+
+			// Check function throw types
+			for _, throw := range fun.throws {
+				if throw.typeName != "" && strings.Contains(string(throw.typeName), ".") {
+					parts := strings.Split(string(throw.typeName), ".")
+					if len(parts) >= 2 {
+						ns := strings.Join(parts[:len(parts)-1], ".")
+						actualUsedPackages[ns] = true
+					}
+				}
+			}
+		}
+	}
+
 	return actualUsedPackages
+}
+
+// collectExpandedFieldPackages collects package names from expanded fields
+// These are packages that were "removed" when fields were expanded
+func (s *Scope) collectExpandedFieldPackages() map[string]bool {
+	expandedFieldPackages := make(map[string]bool)
+
+	// Check all fields for expanded fields
+	ss := append(s.StructLikes(), s.synthesized...)
+	for _, st := range ss {
+		for _, f := range st.fields {
+			// Check if this field was expanded
+			if f.isExpandable && len(f.expandedFields) > 0 {
+				// The original field type was "removed" and replaced with expanded fields
+				// Check if the original field type referenced a package
+				if f.Field.Type.Name != "" && strings.Contains(f.Field.Type.Name, ".") {
+					parts := strings.Split(f.Field.Type.Name, ".")
+					if len(parts) >= 2 {
+						ns := strings.Join(parts[:len(parts)-1], ".")
+						expandedFieldPackages[ns] = true
+					}
+				}
+			}
+		}
+	}
+
+	return expandedFieldPackages
 }
 
 // resolveFieldTypes resolves all field types
@@ -847,20 +897,9 @@ func (s *Scope) resolveExpandedFields(f *Field, resolver *Resolver, frugalResolv
 				expandedField.typeName = TypeName(expandedField.Field.Type.Name)
 			}
 		}
-		if strings.Contains(expandedField.Field.Type.Name, ".") {
-			parts := strings.Split(expandedField.Field.Type.Name, ".")
-			if len(parts) >= 2 {
-				ns := strings.Join(parts[:len(parts)-1], ".")
-				for _, inc := range s.includes {
-					for _, refInc := range inc.Scope.includes {
-						if refInc != nil && refInc.Scope != nil && refInc.PackageName == ns {
-							pkgName := s.includeIDL(cu, refInc.Scope.ast)
-							s.imports.UseStdLibrary(pkgName)
-						}
-					}
-				}
-			}
-		}
+		// Note: We don't call UseStdLibrary here for expanded fields
+		// because expanding fields doesn't mean we're actually using the package
+		// The package usage should be determined by actual type references
 	}
 }
 

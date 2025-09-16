@@ -41,3 +41,9 @@ testall: thriftgo
 clean:
 	rm -rf $(COV_PROF) $(IDL)
 
+build_tool:
+	go build -o thriftgo.exe .
+
+install: build_tool
+	cp thriftgo.exe C:\Users\yihui\go\bin
+
