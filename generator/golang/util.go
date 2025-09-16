@@ -80,7 +80,10 @@ func NewCodeUtils(log backend.LogFunc) *CodeUtils {
 		scopeCache:    make(map[*parser.Thrift]*Scope),
 		useTemplate:   defaultTemplate,
 		alternative:   templates.Alternative(),
+		doInitialisms: true, // 默认启用缩写词处理
 	}
+	// 确保命名风格使用正确的初始值
+	cu.namingStyle.UseInitialisms(cu.doInitialisms)
 	return cu
 }
 
