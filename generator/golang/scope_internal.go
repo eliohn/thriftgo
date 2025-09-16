@@ -689,19 +689,96 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 								s.imports.UseStdLibrary(pkgName)
 							}
 						}
-						// Un used includes currently, but not used in the current scope
-						s.imports.libNotUsed[inc.PackageName] = true
 					}
 				}
 			}
 		}
 	}
+
 	for _, t := range s.typedefs {
 		t.typeName = ensureType(resolver.ResolveTypeName(t.Type)).Deref()
 	}
 	for _, v := range s.constants {
 		v.typeName = ensureType(resolver.ResolveTypeName(v.Type))
 		v.init = ensureCode(resolver.GetConstInit(v.Name, v.Type, v.Value))
+	}
+
+	// 在展开字段后，检查哪些包没有被使用
+	// 简单的方法：检查所有包是否还在libNotUsed中，如果不在说明被使用了
+	// 然后检查这些被使用的包是否还有实际的引用
+
+	// 收集所有被标记为已使用的包
+	usedPackages := make(map[string]bool)
+	for _, inc := range s.includes {
+		if inc != nil && inc.Scope != nil {
+			pkgName := s.includeIDL(cu, inc.Scope.ast)
+			// 如果包不在libNotUsed中，说明被标记为已使用
+			if _, exists := s.imports.libNotUsed[pkgName]; !exists {
+				usedPackages[inc.PackageName] = true
+			}
+		}
+	}
+
+	// 检查这些被使用的包是否还有实际的引用
+	actualUsedPackages := make(map[string]bool)
+
+	// 检查所有字段的解析后类型名
+	ss := append(s.StructLikes(), s.synthesized...)
+	for _, st := range ss {
+		for _, f := range st.fields {
+			// 检查普通字段的解析后类型名
+			if f.typeName != "" && strings.Contains(string(f.typeName), ".") {
+				parts := strings.Split(string(f.typeName), ".")
+				if len(parts) >= 2 {
+					ns := strings.Join(parts[:len(parts)-1], ".")
+					actualUsedPackages[ns] = true
+				}
+			}
+
+			// 检查展开字段的解析后类型名
+			for _, expandedField := range f.expandedFields {
+				if expandedField.typeName != "" && strings.Contains(string(expandedField.typeName), ".") {
+					parts := strings.Split(string(expandedField.typeName), ".")
+					if len(parts) >= 2 {
+						ns := strings.Join(parts[:len(parts)-1], ".")
+						actualUsedPackages[ns] = true
+					}
+				}
+			}
+		}
+	}
+
+	// 检查所有typedefs的解析后类型名
+	for _, t := range s.typedefs {
+		if t.typeName != "" && strings.Contains(string(t.typeName), ".") {
+			parts := strings.Split(string(t.typeName), ".")
+			if len(parts) >= 2 {
+				ns := strings.Join(parts[:len(parts)-1], ".")
+				actualUsedPackages[ns] = true
+			}
+		}
+	}
+
+	// 检查所有constants的解析后类型名
+	for _, v := range s.constants {
+		if v.typeName != "" && strings.Contains(string(v.typeName), ".") {
+			parts := strings.Split(string(v.typeName), ".")
+			if len(parts) >= 2 {
+				ns := strings.Join(parts[:len(parts)-1], ".")
+				actualUsedPackages[ns] = true
+			}
+		}
+	}
+
+	// 重新标记未使用的包
+	for _, inc := range s.includes {
+		if inc != nil && inc.Scope != nil {
+			pkgName := s.includeIDL(cu, inc.Scope.ast)
+			// 如果包被标记为已使用，但实际没有引用，重新标记为未使用
+			if usedPackages[inc.PackageName] && !actualUsedPackages[inc.PackageName] {
+				s.imports.libNotUsed[pkgName] = true
+			}
+		}
 	}
 
 	for _, svc := range s.services {
