@@ -132,13 +132,14 @@ var fieldIDToName_{{$TypeName}} = map[int16]string{
 {{- range .Fields}}
 	{{- if .IsExpandable}}
 		{{- range .ExpandedFields}}
-	{{.ID}}: "{{.Name}}",
+	{{.ID}}: "{{.Name}}", // 展开字段: {{.Name}}
 		{{- end}}
 	{{- else}}
-	{{.ID}}: "{{.Name}}",
+	{{.ID}}: "{{.Name}}", // 普通字段: {{.Name}}
 	{{- end}}
 {{- end}}{{/* range .Fields */}}
 }
+// DEBUG: 模板已更新 - 检查展开字段是否正确包含
 
 {{template "FieldIsSet" .}}
 

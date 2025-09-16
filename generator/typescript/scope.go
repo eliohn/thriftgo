@@ -423,6 +423,7 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"GetInterfaceName":      GetInterfaceName,
 		"GetClassName":          GetClassName,
 		"GetEnumName":           GetEnumName,
+		"GetEnumValueName":      GetEnumValueName,
 		"GetPropertyName":       GetPropertyName,
 		"GetConstantName":       GetConstantName,
 		"IsOptional":            IsOptional,

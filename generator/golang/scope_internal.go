@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	thrift_option "github.com/cloudwego/thriftgo/extension/thrift_option"
+	"github.com/cloudwego/thriftgo/extension/thrift_option"
 
 	"github.com/cloudwego/thriftgo/generator/golang/common"
 	"github.com/cloudwego/thriftgo/generator/golang/streaming"
@@ -545,30 +545,18 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 			if referencedStruct != nil {
 				// Check if struct is expandable (has expandable = "true" annotation)
 				structIsExpandable := referencedStruct.Expandable != nil && *referencedStruct.Expandable
-				//log.Printf("struct %s is expandable: %t , shouldExpand: %t", referencedStruct.Name, structIsExpandable, shouldExpand)
 				if shouldExpand || structIsExpandable {
 					isExpandable = true
-					//fieldNameSpace := ""
-					// 如果f.Type.Name 有带命名空间，把命名空间提取出来 比如 base.MyData ，提取出 base, 要先判断一下有没有
 					if strings.Contains(f.Type.Name, ".") {
 						ns := strings.Split(f.Type.Name, ".")
 						ns = ns[:len(ns)-1]
-						//fieldNameSpace = strings.Join(ns, ".")
 					}
 
 					// Create expanded fields from the struct's fields
 					for _, structField := range referencedStruct.Fields {
 						// Create a new field with adjusted ID to avoid conflicts
 						adjustedField := *structField
-						// 使用字段原始ID * 1000 + 结构体字段ID作为偏移量，避免多个展开字段间的ID冲突
-						adjustedField.ID = structField.ID + (f.ID * 1000) // 使用字段ID作为偏移量基础
-
-						// 修复：处理嵌套引用类型，如 enums.ErrorCode
-						// 对于展开字段，我们不需要调整类型名称，因为展开字段应该使用原始的类型名称
-						// 类型解析将在 resolveTypesAndValues 阶段进行
-
-						//log.Printf("展开： field %s with struct field %s", f.Name, structField.Name)
-						// 为展开字段生成正确的方法名称，确保首字母大写
+						adjustedField.ID = structField.ID + (f.ID * 1000)
 						expandedFieldName := st.scope.Add(common.UpperFirstRune(string(Name(structField.Name))), structField.Name)
 						expandedField := &Field{
 							Field:               &adjustedField,
@@ -605,7 +593,6 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 			isExpandable:   isExpandable,
 			expandedFields: expandedFields,
 		}
-
 		st.fields = append(st.fields, field)
 	}
 
@@ -665,10 +652,6 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 	for f := range ff {
 		v := f.Field
 		f.typeName = ensureType(resolver.ResolveFieldTypeName(v))
-		// This is used to set the real field name for nested struct, ex.
-		// type T struct {
-		// 	*Nested
-		// }
 		if cu.Features().EnableNestedStruct && isNestedField(f.Field) {
 			name := f.typeName.Deref().String()
 			if strings.Contains(name, ".") {
@@ -683,20 +666,32 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 			f.defaultValue = ensureCode(resolver.GetFieldInit(v))
 		}
 
-		// 处理展开字段的类型解析
 		for _, expandedField := range f.expandedFields {
-			// 使用调整后的字段进行类型解析，确保命名空间正确
 			expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(expandedField.Field))
 			expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(expandedField.Field.Type))
 			expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(expandedField.Field))
 			if expandedField.IsSetDefault() {
 				expandedField.defaultValue = ensureCode(resolver.GetFieldInit(expandedField.Field))
 			}
-			// 如果类型解析失败，尝试手动构建类型名称
 			if expandedField.typeName == "" && expandedField.Field.Type.Name != "" {
-				// 如果调整后的类型名包含命名空间，直接使用它
 				if strings.Contains(expandedField.Field.Type.Name, ".") {
 					expandedField.typeName = TypeName(expandedField.Field.Type.Name)
+				}
+			}
+			if strings.Contains(expandedField.Field.Type.Name, ".") {
+				parts := strings.Split(expandedField.Field.Type.Name, ".")
+				if len(parts) >= 2 {
+					ns := strings.Join(parts[:len(parts)-1], ".")
+					for _, inc := range s.includes {
+						for _, refInc := range inc.Scope.includes {
+							if refInc != nil && refInc.Scope != nil && refInc.PackageName == ns {
+								pkgName := s.includeIDL(cu, refInc.Scope.ast)
+								s.imports.UseStdLibrary(pkgName)
+							}
+						}
+						// Un used includes currently, but not used in the current scope
+						s.imports.libNotUsed[inc.PackageName] = true
+					}
 				}
 			}
 		}
@@ -724,23 +719,16 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 
 	for _, svc := range s.services {
 		for _, fun := range svc.functions {
-			// 处理函数参数类型解析
 			for _, f := range fun.argType.fields {
 				a := *f
 				a.name = Name(fun.scope.Get(f.Name))
-				// 确保参数类型正确解析，应用命名空间修复逻辑
 				if f.Type != nil && strings.Contains(f.Type.Name, ".") {
-					// 如果类型名包含命名空间，需要修复它
 					parts := strings.Split(f.Type.Name, ".")
 					typeName := parts[len(parts)-1]
-					// 从当前作用域获取正确的命名空间
 					correctNamespace := ""
-					// 如果作用域中没有命名空间，尝试从 includes 中获取
 					for _, inc := range s.includes {
 						if inc != nil && inc.Scope != nil {
-							//typeName 是不是在 inc 中
 							if inc.Scope.globals.Get(typeName) != "" {
-								// log.Printf("REQ调试: %s 在 %s 中", typeName, inc.PackageName)
 								correctNamespace = inc.PackageName
 								break
 							}
@@ -752,10 +740,8 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 					} else {
 						fullTypeName = correctNamespace + "." + typeName
 					}
-					// 直接使用完整的类型名
 					a.typeName = ensureType(TypeName("*"+fullTypeName), nil)
 				} else {
-					// 普通类型解析
 					a.typeName = ensureType(resolver.ResolveTypeName(f.Type))
 				}
 				fun.arguments = append(fun.arguments, &a)
@@ -763,30 +749,18 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 			if !fun.Oneway {
 				fs := fun.resType.fields
 				if !fun.Void {
-
-					// 对于展开字段，需要找到原始的类型而不是展开后的字段类型
 					if fs[0].isExpandable && fs[0].originalStructField != nil {
-						// 使用原始字段的类型
 						resolvedType, err := resolver.ResolveTypeName(fs[0].originalStructField.Type)
 						fun.responseType = ensureType(resolvedType, err)
 					} else {
-						// 检查是否是 success 字段，如果是，使用原始的函数返回类型
 						if fs[0].Name == "success" {
-							// 使用原始的函数返回类型，而不是展开后的类型
-							// 这里需要确保使用正确的类型
-
-							// 如果 Type.Name 包含命名空间，需要修复它
 							if strings.Contains(fs[0].Type.Name, ".") {
 								parts := strings.Split(fs[0].Type.Name, ".")
 								typeName := parts[len(parts)-1]
-								// 从当前作用域获取正确的命名空间
 								correctNamespace := ""
-								// 如果作用域中没有命名空间，尝试从 includes 中获取
 								for _, inc := range s.includes {
 									if inc != nil && inc.Scope != nil {
-										//typeName 是不是在 inc 中
 										if inc.Scope.globals.Get(typeName) != "" {
-											// log.Printf("调试: %s 在 %s 中", typeName, inc.PackageName)
 											correctNamespace = inc.PackageName
 											break
 										}
@@ -794,19 +768,16 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 								}
 								var fullTypeName string
 								if correctNamespace == "" {
-									fullTypeName = typeName // 构建完整的类型名，如 "test.User"
+									fullTypeName = typeName
 								} else {
-									fullTypeName = correctNamespace + "." + typeName // 构建完整的类型名，如 "test.User"
+									fullTypeName = correctNamespace + "." + typeName
 								}
-
-								// 直接使用完整的类型名
 								fun.responseType = ensureType(TypeName("*"+fullTypeName), nil)
 							} else {
 								resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
 								fun.responseType = ensureType(resolvedType, err)
 							}
 						} else {
-							// 如果不是 success 字段，可能是展开后的字段，需要找到原始类型
 							resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
 							fun.responseType = ensureType(resolvedType, err)
 						}
@@ -868,8 +839,6 @@ func isBaseType(typeName string) bool {
 		"string": true,
 		"binary": true,
 	}
-
-	// 移除可能的命名空间前缀后再判断
 	if strings.Contains(typeName, ".") {
 		parts := strings.Split(typeName, ".")
 		typeName = parts[len(parts)-1]

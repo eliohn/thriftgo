@@ -217,6 +217,13 @@ func (t *TypeScriptBackend) renderSeparateFiles(scope *Scope, executeTpl *templa
 		}
 	}
 
+	// 生成 HTTP 客户端文件（如果有服务的话）
+	if len(scope.Services) > 0 {
+		if err := t.renderHttpClientFiles(scope, executeTpl, basePath); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

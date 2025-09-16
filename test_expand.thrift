@@ -1,5 +1,5 @@
 namespace go test_temp
-namespace ts test_temp
+namespace ts expand
 
 include "base.thrift"
 

@@ -199,9 +199,16 @@ _ error = ({{.GoTypeName}})(nil)
 	extraMapFieldText = `
 var fieldIDToName_{{$TypeName}} = map[int16]string{
 {{- range .Fields}}
-	{{.ID}}: "{{.Name}}",
+	{{- if .IsExpandable}}
+		{{- range .ExpandedFields}}
+	{{.ID}}: "{{.Name}}", // 展开字段: {{.Name}}
+		{{- end}}
+	{{- else}}
+	{{.ID}}: "{{.Name}}", // 普通字段: {{.Name}}
+	{{- end}}
 {{- end}}{{/* range .Fields */}}
 }
+// DEBUG: slim模板已更新 - 检查展开字段是否正确包含
 `
 
 	extraStructText = `

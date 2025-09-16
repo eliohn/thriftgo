@@ -58,10 +58,13 @@ FileLoop:
 			continue
 		}
 		name := f.GetName()
+		fm.log.Info(fmt.Sprintf("[%s] Processing file: '%s'", src, name))
 		if idx, ok := fm.index[name]; !ok {
+			fm.log.Info(fmt.Sprintf("[%s] New file: '%s'", src, name))
 			fm.index[name] = len(fm.files)
 			fm.files = append(fm.files, f)
 		} else {
+			fm.log.Info(fmt.Sprintf("[%s] File already exists: '%s'", src, name))
 			if f.GetInsertionPoint() != "" {
 				// FIXME: when the target file is renamed due to name collision, the patch may be invalid.
 				fm.patch[name] = append(fm.patch[name], f)
@@ -82,6 +85,7 @@ FileLoop:
 						continue FileLoop
 					}
 					renamed = fmt.Sprintf("%s_%d%s", pth, cnt, ext)
+					fm.log.Info(fmt.Sprintf("[%s] Trying renamed file: '%s'", src, renamed))
 					if cnt > fm.count[name] {
 						break
 					} else {
@@ -91,6 +95,7 @@ FileLoop:
 				}
 
 				fm.log.Warn(fmt.Sprintf("[%s] file names conflict: '%s' (%d <> %d)", src, name, len(fm.files[fst].Content), len(f.Content)))
+				fm.log.Info(fmt.Sprintf("[%s] Renaming '%s' to '%s'", src, name, renamed))
 				fm.index[renamed] = len(fm.files)
 				fm.files = append(fm.files, f)
 				fm.count[name]++

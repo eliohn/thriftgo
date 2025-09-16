@@ -73,7 +73,8 @@ func GetTypeScriptType(thriftType *parser.Type) string {
 	case parser.Category_Map:
 		keyType := GetTypeScriptType(thriftType.KeyType)
 		valueType := GetTypeScriptType(thriftType.ValueType)
-		return fmt.Sprintf("Map<%s, %s>", keyType, valueType)
+		// 在 TypeScript 中，Map 类型应该使用对象类型语法
+		return fmt.Sprintf("{ [key: %s]: %s }", keyType, valueType)
 	case parser.Category_Enum:
 		return getSimpleTypeName(thriftType.Name)
 	case parser.Category_Struct, parser.Category_Union, parser.Category_Exception:
@@ -179,6 +180,11 @@ func GetClassName(name string) string {
 // GetEnumName 获取枚举名称
 func GetEnumName(name string) string {
 	return strings.Title(name)
+}
+
+// GetEnumValueName 获取枚举值名称
+func GetEnumValueName(name string) string {
+	return strings.ToUpper(name)
 }
 
 // GetPropertyName 获取属性名称
