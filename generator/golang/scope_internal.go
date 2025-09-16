@@ -649,14 +649,14 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 		}
 		return c
 	}
+	// After expanding the fields, check which packages are not used.
+	s.checkUnusedPackagesAfterExpansion(cu)
 	// Resolve the field types
 	s.resolveFieldTypes(ff, resolver, frugalResolver, cu, ensureType, ensureCode)
 
 	// Resolve the typedefs and constants
 	s.resolveTypedefsAndConstants(resolver, ensureType, ensureCode)
 
-	// After expanding the fields, check which packages are not used.
-	s.checkUnusedPackagesAfterExpansion(cu)
 	// The basic service of the parsing service
 	s.resolveServiceBases()
 	// Resolve the function types
@@ -897,9 +897,21 @@ func (s *Scope) resolveExpandedFields(f *Field, resolver *Resolver, frugalResolv
 				expandedField.typeName = TypeName(expandedField.Field.Type.Name)
 			}
 		}
-		// Note: We don't call UseStdLibrary here for expanded fields
-		// because expanding fields doesn't mean we're actually using the package
-		// The package usage should be determined by actual type references
+		// expanded field package reference
+		if strings.Contains(expandedField.Field.Type.Name, ".") {
+			parts := strings.Split(expandedField.Field.Type.Name, ".")
+			if len(parts) >= 2 {
+				ns := strings.Join(parts[:len(parts)-1], ".")
+				for _, inc := range s.includes {
+					for _, refInc := range inc.Scope.includes {
+						if refInc != nil && refInc.Scope != nil && refInc.PackageName == ns {
+							pkgName := s.includeIDL(cu, refInc.Scope.ast)
+							s.imports.UseStdLibrary(pkgName)
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
