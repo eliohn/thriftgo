@@ -358,7 +358,7 @@ func (s *Scope) getReferencedStruct(f *parser.Field) *parser.StructLike {
 					}
 				}
 				candidateStruct := inc.Scope.ast.Structs[ix]
-				// 验证结构体名称是否匹配字段类型名称
+				// Verify that the struct name matches the field type name
 				if candidateStruct.Name == expectedTypeName {
 					referencedStruct = candidateStruct
 					break
@@ -568,10 +568,10 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 							isset:               Name("IsSet" + expandedFieldName),
 							deepEqual:           Name("Field" + id2str(adjustedField.ID) + "DeepEqual"),
 							isNested:            false,
-							originalStructField: structField, // 设置原始结构体字段用于类型解析
-							//namespace: fieldNameSpace, // 设置字段的命名空间
+							originalStructField: structField, // Set the original struct field for type resolution
+							//namespace: fieldNameSpace, // Set the field's namespace
 						}
-						// 类型解析将在 resolveTypesAndValues 阶段进行
+						// Type resolution will be performed in the resolveTypesAndValues stage
 
 						expandedFields = append(expandedFields, expandedField)
 					}
@@ -649,226 +649,18 @@ func (s *Scope) resolveTypesAndValues(cu *CodeUtils) {
 		}
 		return c
 	}
-	for f := range ff {
-		v := f.Field
-		f.typeName = ensureType(resolver.ResolveFieldTypeName(v))
-		if cu.Features().EnableNestedStruct && isNestedField(f.Field) {
-			name := f.typeName.Deref().String()
-			if strings.Contains(name, ".") {
-				names := strings.Split(name, ".")
-				name = names[len(names)-1]
-			}
-			f.name = Name(name)
-		}
-		f.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(v.Type))
-		f.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(v))
-		if f.IsSetDefault() {
-			f.defaultValue = ensureCode(resolver.GetFieldInit(v))
-		}
+	// Resolve the field types
+	s.resolveFieldTypes(ff, resolver, frugalResolver, cu, ensureType, ensureCode)
 
-		for _, expandedField := range f.expandedFields {
-			expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(expandedField.Field))
-			expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(expandedField.Field.Type))
-			expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(expandedField.Field))
-			if expandedField.IsSetDefault() {
-				expandedField.defaultValue = ensureCode(resolver.GetFieldInit(expandedField.Field))
-			}
-			if expandedField.typeName == "" && expandedField.Field.Type.Name != "" {
-				if strings.Contains(expandedField.Field.Type.Name, ".") {
-					expandedField.typeName = TypeName(expandedField.Field.Type.Name)
-				}
-			}
-			if strings.Contains(expandedField.Field.Type.Name, ".") {
-				parts := strings.Split(expandedField.Field.Type.Name, ".")
-				if len(parts) >= 2 {
-					ns := strings.Join(parts[:len(parts)-1], ".")
-					for _, inc := range s.includes {
-						for _, refInc := range inc.Scope.includes {
-							if refInc != nil && refInc.Scope != nil && refInc.PackageName == ns {
-								pkgName := s.includeIDL(cu, refInc.Scope.ast)
-								s.imports.UseStdLibrary(pkgName)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	// Resolve the typedefs and constants
+	s.resolveTypedefsAndConstants(resolver, ensureType, ensureCode)
 
-	for _, t := range s.typedefs {
-		t.typeName = ensureType(resolver.ResolveTypeName(t.Type)).Deref()
-	}
-	for _, v := range s.constants {
-		v.typeName = ensureType(resolver.ResolveTypeName(v.Type))
-		v.init = ensureCode(resolver.GetConstInit(v.Name, v.Type, v.Value))
-	}
-
-	// 在展开字段后，检查哪些包没有被使用
-	// 简单的方法：检查所有包是否还在libNotUsed中，如果不在说明被使用了
-	// 然后检查这些被使用的包是否还有实际的引用
-
-	// 收集所有被标记为已使用的包
-	usedPackages := make(map[string]bool)
-	for _, inc := range s.includes {
-		if inc != nil && inc.Scope != nil {
-			pkgName := s.includeIDL(cu, inc.Scope.ast)
-			// 如果包不在libNotUsed中，说明被标记为已使用
-			if _, exists := s.imports.libNotUsed[pkgName]; !exists {
-				usedPackages[inc.PackageName] = true
-			}
-		}
-	}
-
-	// 检查这些被使用的包是否还有实际的引用
-	actualUsedPackages := make(map[string]bool)
-
-	// 检查所有字段的解析后类型名
-	ss := append(s.StructLikes(), s.synthesized...)
-	for _, st := range ss {
-		for _, f := range st.fields {
-			// 检查普通字段的解析后类型名
-			if f.typeName != "" && strings.Contains(string(f.typeName), ".") {
-				parts := strings.Split(string(f.typeName), ".")
-				if len(parts) >= 2 {
-					ns := strings.Join(parts[:len(parts)-1], ".")
-					actualUsedPackages[ns] = true
-				}
-			}
-
-			// 检查展开字段的解析后类型名
-			for _, expandedField := range f.expandedFields {
-				if expandedField.typeName != "" && strings.Contains(string(expandedField.typeName), ".") {
-					parts := strings.Split(string(expandedField.typeName), ".")
-					if len(parts) >= 2 {
-						ns := strings.Join(parts[:len(parts)-1], ".")
-						actualUsedPackages[ns] = true
-					}
-				}
-			}
-		}
-	}
-
-	// 检查所有typedefs的解析后类型名
-	for _, t := range s.typedefs {
-		if t.typeName != "" && strings.Contains(string(t.typeName), ".") {
-			parts := strings.Split(string(t.typeName), ".")
-			if len(parts) >= 2 {
-				ns := strings.Join(parts[:len(parts)-1], ".")
-				actualUsedPackages[ns] = true
-			}
-		}
-	}
-
-	// 检查所有constants的解析后类型名
-	for _, v := range s.constants {
-		if v.typeName != "" && strings.Contains(string(v.typeName), ".") {
-			parts := strings.Split(string(v.typeName), ".")
-			if len(parts) >= 2 {
-				ns := strings.Join(parts[:len(parts)-1], ".")
-				actualUsedPackages[ns] = true
-			}
-		}
-	}
-
-	// 重新标记未使用的包
-	for _, inc := range s.includes {
-		if inc != nil && inc.Scope != nil {
-			pkgName := s.includeIDL(cu, inc.Scope.ast)
-			// 如果包被标记为已使用，但实际没有引用，重新标记为未使用
-			if usedPackages[inc.PackageName] && !actualUsedPackages[inc.PackageName] {
-				s.imports.libNotUsed[pkgName] = true
-			}
-		}
-	}
-
-	for _, svc := range s.services {
-		if svc.Extends == "" {
-			continue
-		}
-		ref := svc.GetReference()
-		if ref == nil {
-			svc.base = s.Service(svc.Extends)
-		} else {
-			idx := ref.GetIndex()
-			svc.base = s.includes[idx].Scope.Service(ref.GetName())
-		}
-	}
-
-	for _, svc := range s.services {
-		for _, fun := range svc.functions {
-			for _, f := range fun.argType.fields {
-				a := *f
-				a.name = Name(fun.scope.Get(f.Name))
-				if f.Type != nil && strings.Contains(f.Type.Name, ".") {
-					parts := strings.Split(f.Type.Name, ".")
-					typeName := parts[len(parts)-1]
-					correctNamespace := ""
-					for _, inc := range s.includes {
-						if inc != nil && inc.Scope != nil {
-							if inc.Scope.globals.Get(typeName) != "" {
-								correctNamespace = inc.PackageName
-								break
-							}
-						}
-					}
-					var fullTypeName string
-					if correctNamespace == "" {
-						fullTypeName = typeName
-					} else {
-						fullTypeName = correctNamespace + "." + typeName
-					}
-					a.typeName = ensureType(TypeName("*"+fullTypeName), nil)
-				} else {
-					a.typeName = ensureType(resolver.ResolveTypeName(f.Type))
-				}
-				fun.arguments = append(fun.arguments, &a)
-			}
-			if !fun.Oneway {
-				fs := fun.resType.fields
-				if !fun.Void {
-					if fs[0].isExpandable && fs[0].originalStructField != nil {
-						resolvedType, err := resolver.ResolveTypeName(fs[0].originalStructField.Type)
-						fun.responseType = ensureType(resolvedType, err)
-					} else {
-						if fs[0].Name == "success" {
-							if strings.Contains(fs[0].Type.Name, ".") {
-								parts := strings.Split(fs[0].Type.Name, ".")
-								typeName := parts[len(parts)-1]
-								correctNamespace := ""
-								for _, inc := range s.includes {
-									if inc != nil && inc.Scope != nil {
-										if inc.Scope.globals.Get(typeName) != "" {
-											correctNamespace = inc.PackageName
-											break
-										}
-									}
-								}
-								var fullTypeName string
-								if correctNamespace == "" {
-									fullTypeName = typeName
-								} else {
-									fullTypeName = correctNamespace + "." + typeName
-								}
-								fun.responseType = ensureType(TypeName("*"+fullTypeName), nil)
-							} else {
-								resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
-								fun.responseType = ensureType(resolvedType, err)
-							}
-						} else {
-							resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
-							fun.responseType = ensureType(resolvedType, err)
-						}
-					}
-					fs = fs[1:]
-				}
-				for _, f := range fs {
-					t := *f
-					t.name = Name(fun.scope.Get(f.Name))
-					fun.throws = append(fun.throws, &t)
-				}
-			}
-		}
-	}
+	// After expanding the fields, check which packages are not used.
+	s.checkUnusedPackagesAfterExpansion(cu)
+	// The basic service of the parsing service
+	s.resolveServiceBases()
+	// Resolve the function types
+	s.resolveFunctionTypes(resolver, ensureType)
 }
 
 func isNestedField(f *parser.Field) bool {
@@ -903,7 +695,7 @@ func annotationContainsTrue(annos parser.Annotations, anno string) bool {
 	return false
 }
 
-// isBaseType 添加辅助函数用于判断是否为基础类型
+// isBaseType adds a helper function to determine if it is a basic type
 func isBaseType(typeName string) bool {
 	baseTypes := map[string]bool{
 		"bool":   true,
@@ -924,10 +716,266 @@ func isBaseType(typeName string) bool {
 	return baseTypes[typeName]
 }
 
-// 是否是引用我类型
+// Whether it is a reference type
 func isHasNamespace(typeName string) bool {
 	if strings.Contains(typeName, ".") {
 		return true
 	}
 	return false
+}
+
+// checkUnusedPackagesAfterExpansion checks which packages are not used after expanding fields
+// This method checks if there are still references to the original packages after expanding fields, and marks them as unused if not
+func (s *Scope) checkUnusedPackagesAfterExpansion(cu *CodeUtils) {
+	// Collect all packages marked as used
+	usedPackages := make(map[string]bool)
+	for _, inc := range s.includes {
+		if inc != nil && inc.Scope != nil {
+			pkgName := s.includeIDL(cu, inc.Scope.ast)
+			// If the package is not in libNotUsed, it means it's marked as used
+			if _, exists := s.imports.libNotUsed[pkgName]; !exists {
+				usedPackages[inc.PackageName] = true
+			}
+		}
+	}
+
+	// Check if these used packages still have actual references
+	actualUsedPackages := s.collectActuallyUsedPackages()
+
+	// Re-mark unused packages
+	for _, inc := range s.includes {
+		if inc != nil && inc.Scope != nil {
+			pkgName := s.includeIDL(cu, inc.Scope.ast)
+			// If the package is marked as used but has no actual references, re-mark it as unused
+			if usedPackages[inc.PackageName] && !actualUsedPackages[inc.PackageName] {
+				s.imports.libNotUsed[pkgName] = true
+			}
+		}
+	}
+}
+
+// collectActuallyUsedPackages collects all actually used package names
+// Determines package usage by checking the resolved type names of all fields, typedefs and constants
+func (s *Scope) collectActuallyUsedPackages() map[string]bool {
+	actualUsedPackages := make(map[string]bool)
+
+	// Check all field resolved type names
+	ss := append(s.StructLikes(), s.synthesized...)
+	for _, st := range ss {
+		for _, f := range st.fields {
+			// Check normal field resolved type names
+			if f.typeName != "" && strings.Contains(string(f.typeName), ".") {
+				parts := strings.Split(string(f.typeName), ".")
+				if len(parts) >= 2 {
+					ns := strings.Join(parts[:len(parts)-1], ".")
+					actualUsedPackages[ns] = true
+				}
+			}
+
+			// Check expanded field resolved type names
+			for _, expandedField := range f.expandedFields {
+				if expandedField.typeName != "" && strings.Contains(string(expandedField.typeName), ".") {
+					parts := strings.Split(string(expandedField.typeName), ".")
+					if len(parts) >= 2 {
+						ns := strings.Join(parts[:len(parts)-1], ".")
+						actualUsedPackages[ns] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Check all typedefs resolved type names
+	for _, t := range s.typedefs {
+		if t.typeName != "" && strings.Contains(string(t.typeName), ".") {
+			parts := strings.Split(string(t.typeName), ".")
+			if len(parts) >= 2 {
+				ns := strings.Join(parts[:len(parts)-1], ".")
+				actualUsedPackages[ns] = true
+			}
+		}
+	}
+
+	// Check all constants resolved type names
+	for _, v := range s.constants {
+		if v.typeName != "" && strings.Contains(string(v.typeName), ".") {
+			parts := strings.Split(string(v.typeName), ".")
+			if len(parts) >= 2 {
+				ns := strings.Join(parts[:len(parts)-1], ".")
+				actualUsedPackages[ns] = true
+			}
+		}
+	}
+
+	return actualUsedPackages
+}
+
+// resolveFieldTypes resolves all field types
+func (s *Scope) resolveFieldTypes(ff chan *Field, resolver *Resolver, frugalResolver *FrugalResolver, cu *CodeUtils, ensureType func(TypeName, error) TypeName, ensureCode func(Code, error) Code) {
+	for f := range ff {
+		v := f.Field
+		f.typeName = ensureType(resolver.ResolveFieldTypeName(v))
+		if cu.Features().EnableNestedStruct && isNestedField(f.Field) {
+			name := f.typeName.Deref().String()
+			if strings.Contains(name, ".") {
+				names := strings.Split(name, ".")
+				name = names[len(names)-1]
+			}
+			f.name = Name(name)
+		}
+		f.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(v.Type))
+		f.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(v))
+		if f.IsSetDefault() {
+			f.defaultValue = ensureCode(resolver.GetFieldInit(v))
+		}
+
+		s.resolveExpandedFields(f, resolver, frugalResolver, cu, ensureType, ensureCode)
+	}
+}
+
+// resolveExpandedFields resolves expanded field types and package references
+func (s *Scope) resolveExpandedFields(f *Field, resolver *Resolver, frugalResolver *FrugalResolver, cu *CodeUtils, ensureType func(TypeName, error) TypeName, ensureCode func(Code, error) Code) {
+	for _, expandedField := range f.expandedFields {
+		expandedField.typeName = ensureType(resolver.ResolveFieldTypeName(expandedField.Field))
+		expandedField.frugalTypeName = ensureType(frugalResolver.ResolveFrugalTypeName(expandedField.Field.Type))
+		expandedField.defaultTypeName = ensureType(resolver.GetDefaultValueTypeName(expandedField.Field))
+		if expandedField.IsSetDefault() {
+			expandedField.defaultValue = ensureCode(resolver.GetFieldInit(expandedField.Field))
+		}
+		if expandedField.typeName == "" && expandedField.Field.Type.Name != "" {
+			if strings.Contains(expandedField.Field.Type.Name, ".") {
+				expandedField.typeName = TypeName(expandedField.Field.Type.Name)
+			}
+		}
+		if strings.Contains(expandedField.Field.Type.Name, ".") {
+			parts := strings.Split(expandedField.Field.Type.Name, ".")
+			if len(parts) >= 2 {
+				ns := strings.Join(parts[:len(parts)-1], ".")
+				for _, inc := range s.includes {
+					for _, refInc := range inc.Scope.includes {
+						if refInc != nil && refInc.Scope != nil && refInc.PackageName == ns {
+							pkgName := s.includeIDL(cu, refInc.Scope.ast)
+							s.imports.UseStdLibrary(pkgName)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// resolveTypedefsAndConstants resolves typedefs and constants types
+func (s *Scope) resolveTypedefsAndConstants(resolver *Resolver, ensureType func(TypeName, error) TypeName, ensureCode func(Code, error) Code) {
+	for _, t := range s.typedefs {
+		t.typeName = ensureType(resolver.ResolveTypeName(t.Type)).Deref()
+	}
+	for _, v := range s.constants {
+		v.typeName = ensureType(resolver.ResolveTypeName(v.Type))
+		v.init = ensureCode(resolver.GetConstInit(v.Name, v.Type, v.Value))
+	}
+}
+
+// resolveServiceBases resolves service base services
+func (s *Scope) resolveServiceBases() {
+	for _, svc := range s.services {
+		if svc.Extends == "" {
+			continue
+		}
+		ref := svc.GetReference()
+		if ref == nil {
+			svc.base = s.Service(svc.Extends)
+		} else {
+			idx := ref.GetIndex()
+			svc.base = s.includes[idx].Scope.Service(ref.GetName())
+		}
+	}
+}
+
+// resolveFunctionTypes resolves function parameter and return value types
+func (s *Scope) resolveFunctionTypes(resolver *Resolver, ensureType func(TypeName, error) TypeName) {
+	for _, svc := range s.services {
+		for _, fun := range svc.functions {
+			s.resolveFunctionArguments(fun, resolver, ensureType)
+			if !fun.Oneway {
+				s.resolveFunctionResponse(fun, resolver, ensureType)
+			}
+		}
+	}
+}
+
+// resolveFunctionArguments resolves function parameter types
+func (s *Scope) resolveFunctionArguments(fun *Function, resolver *Resolver, ensureType func(TypeName, error) TypeName) {
+	for _, f := range fun.argType.fields {
+		a := *f
+		a.name = Name(fun.scope.Get(f.Name))
+		if f.Type != nil && strings.Contains(f.Type.Name, ".") {
+			parts := strings.Split(f.Type.Name, ".")
+			typeName := parts[len(parts)-1]
+			correctNamespace := ""
+			for _, inc := range s.includes {
+				if inc != nil && inc.Scope != nil {
+					if inc.Scope.globals.Get(typeName) != "" {
+						correctNamespace = inc.PackageName
+						break
+					}
+				}
+			}
+			var fullTypeName string
+			if correctNamespace == "" {
+				fullTypeName = typeName
+			} else {
+				fullTypeName = correctNamespace + "." + typeName
+			}
+			a.typeName = ensureType(TypeName("*"+fullTypeName), nil)
+		} else {
+			a.typeName = ensureType(resolver.ResolveTypeName(f.Type))
+		}
+		fun.arguments = append(fun.arguments, &a)
+	}
+}
+
+// resolveFunctionResponse resolves function return value types
+func (s *Scope) resolveFunctionResponse(fun *Function, resolver *Resolver, ensureType func(TypeName, error) TypeName) {
+	fs := fun.resType.fields
+	if !fun.Void {
+		if fs[0].isExpandable && fs[0].originalStructField != nil {
+			resolvedType, err := resolver.ResolveTypeName(fs[0].originalStructField.Type)
+			fun.responseType = ensureType(resolvedType, err)
+		} else {
+			if fs[0].Name == "success" {
+				if strings.Contains(fs[0].Type.Name, ".") {
+					parts := strings.Split(fs[0].Type.Name, ".")
+					typeName := parts[len(parts)-1]
+					correctNamespace := ""
+					for _, inc := range s.includes {
+						if inc != nil && inc.Scope != nil {
+							if inc.Scope.globals.Get(typeName) != "" {
+								correctNamespace = inc.PackageName
+								break
+							}
+						}
+					}
+					var fullTypeName string
+					if correctNamespace == "" {
+						fullTypeName = typeName
+					} else {
+						fullTypeName = correctNamespace + "." + typeName
+					}
+					fun.responseType = ensureType(TypeName("*"+fullTypeName), nil)
+				} else {
+					resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
+					fun.responseType = ensureType(resolvedType, err)
+				}
+			} else {
+				resolvedType, err := resolver.ResolveTypeName(fs[0].Type)
+				fun.responseType = ensureType(resolvedType, err)
+			}
+		}
+		fs = fs[1:]
+	}
+	for _, f := range fs {
+		t := *f
+		t.name = Name(fun.scope.Get(f.Name))
+		fun.throws = append(fun.throws, &t)
+	}
 }
