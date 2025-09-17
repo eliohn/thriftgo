@@ -32,6 +32,7 @@ export { {{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
 
 {{- range .Services }}
 export { {{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
+export { {{ GetInterfaceName .Name }}AxiosClient, create{{ GetInterfaceName .Name }}AxiosClient, Async{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}client';
 {{- end }}
 {{- end -}}
 `

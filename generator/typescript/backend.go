@@ -81,6 +81,9 @@ func (t *TypeScriptBackend) Generate(req *plugin.Request, log backend.LogFunc) *
 		return t.buildResponse()
 	}
 
+	// 设置全局 AST，供模板函数使用
+	SetGlobalAST(req.AST)
+
 	t.prepareTemplates()
 	t.fillRequisitions()
 	t.executeTemplates()
@@ -167,7 +170,7 @@ func (t *TypeScriptBackend) renderOneFile(ast *parser.Thrift) error {
 	if tsNamespace != "" {
 		// 有 namespace，生成到对应文件夹
 		path := t.utils.CombineOutputPath(t.req.OutputPath, ast)
-		return t.renderSeparateFiles(scope, t.tpl, path)
+		return t.renderSeparateFiles(scope, t.tpl, path, ast)
 	} else {
 		// 没有 namespace，生成到根目录
 		path := t.utils.CombineOutputPath(t.req.OutputPath, ast)
@@ -176,7 +179,7 @@ func (t *TypeScriptBackend) renderOneFile(ast *parser.Thrift) error {
 }
 
 // renderSeparateFiles 为每个类型生成单独的文件
-func (t *TypeScriptBackend) renderSeparateFiles(scope *Scope, executeTpl *template.Template, basePath string) error {
+func (t *TypeScriptBackend) renderSeparateFiles(scope *Scope, executeTpl *template.Template, basePath string, ast *parser.Thrift) error {
 	// 生成 index.ts 文件（包含所有导入和导出）
 	if err := t.renderIndexFile(scope, executeTpl, basePath); err != nil {
 		return err
@@ -191,21 +194,21 @@ func (t *TypeScriptBackend) renderSeparateFiles(scope *Scope, executeTpl *templa
 
 	// 为每个结构体生成单独文件
 	for _, structLike := range scope.Structs {
-		if err := t.renderStructFile(scope, executeTpl, basePath, structLike); err != nil {
+		if err := t.renderStructFile(scope, executeTpl, basePath, structLike, ast); err != nil {
 			return err
 		}
 	}
 
 	// 为每个联合体生成单独文件
 	for _, union := range scope.Unions {
-		if err := t.renderStructFile(scope, executeTpl, basePath, union); err != nil {
+		if err := t.renderStructFile(scope, executeTpl, basePath, union, ast); err != nil {
 			return err
 		}
 	}
 
 	// 为每个异常生成单独文件
 	for _, exception := range scope.Exceptions {
-		if err := t.renderStructFile(scope, executeTpl, basePath, exception); err != nil {
+		if err := t.renderStructFile(scope, executeTpl, basePath, exception, ast); err != nil {
 			return err
 		}
 	}
@@ -217,9 +220,9 @@ func (t *TypeScriptBackend) renderSeparateFiles(scope *Scope, executeTpl *templa
 		}
 	}
 
-	// 生成 HTTP 客户端文件（如果有服务的话）
+	// 生成简化版服务实现类文件（如果有服务的话）
 	if len(scope.Services) > 0 {
-		if err := t.renderHttpClientFiles(scope, executeTpl, basePath); err != nil {
+		if err := t.renderSimpleServiceImplementationFiles(scope, executeTpl, basePath); err != nil {
 			return err
 		}
 	}
@@ -324,11 +327,11 @@ func (t *TypeScriptBackend) renderEnumFile(scope *Scope, executeTpl *template.Te
 }
 
 // renderStructFile 生成结构体文件
-func (t *TypeScriptBackend) renderStructFile(scope *Scope, executeTpl *template.Template, basePath string, structLike *parser.StructLike) error {
+func (t *TypeScriptBackend) renderStructFile(scope *Scope, executeTpl *template.Template, basePath string, structLike *parser.StructLike, ast *parser.Thrift) error {
 	filename := filepath.Join(basePath, strings.ToLower(structLike.Name)+".ts")
 
 	// 为单个结构体收集导入
-	structImports := t.collectImportsForStruct(scope, structLike)
+	structImports := t.collectImportsForStruct(scope, structLike, ast)
 
 	// 创建只包含该结构体的 scope
 	structScope := &Scope{
@@ -360,13 +363,13 @@ func (t *TypeScriptBackend) renderServiceFile(scope *Scope, executeTpl *template
 }
 
 // collectImportsForStruct 为单个结构体收集导入
-func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *parser.StructLike) []ImportInfo {
+func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *parser.StructLike, ast *parser.Thrift) []ImportInfo {
 	importMap := make(map[string][]string)
 	localTypes := make(map[string]bool)
 
 	// 收集结构体字段的导入
 	for _, field := range structLike.Fields {
-		scope.collectImportsFromType(field.Type, importMap)
+		scope.collectImportsFromType(field.Type, importMap, ast)
 		// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
 		if field.Type != nil && !strings.Contains(field.Type.Name, ".") && !t.isPrimitiveType(field.Type) {
 			localTypes[field.Type.Name] = true
@@ -376,7 +379,7 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	// 收集展开字段的导入
 	if expandedStruct, exists := scope.ExpandedStructs[structLike.Name]; exists {
 		for _, expandedField := range expandedStruct.ExpandedFields {
-			scope.collectImportsFromType(expandedField.Type, importMap)
+			scope.collectImportsFromType(expandedField.Type, importMap, ast)
 			// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
 			if expandedField.Type != nil && !strings.Contains(expandedField.Type.Name, ".") && !t.isPrimitiveType(expandedField.Type) {
 				localTypes[expandedField.Type.Name] = true
@@ -522,4 +525,58 @@ func (t *TypeScriptBackend) renderByTemplateWithTemplate(scope *Scope, executeTp
 		Name:    &filename,
 	})
 	return nil
+}
+
+// renderServiceImplementationFiles 生成服务实现类文件
+func (t *TypeScriptBackend) renderServiceImplementationFiles(scope *Scope, executeTpl *template.Template, basePath string) error {
+	// 为每个服务生成实现类文件
+	for _, service := range scope.Services {
+		if err := t.renderServiceImplementationFile(scope, executeTpl, basePath, service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// renderServiceImplementationFile 生成单个服务的实现类文件
+func (t *TypeScriptBackend) renderServiceImplementationFile(scope *Scope, executeTpl *template.Template, basePath string, service *parser.Service) error {
+	filename := filepath.Join(basePath, strings.ToLower(service.Name)+"impl.ts")
+
+	// 创建只包含该服务的 scope
+	serviceScope := &Scope{
+		Filename: scope.Filename,
+		Package:  scope.Package,
+		Imports:  scope.Imports,
+		Services: []*parser.Service{service},
+		utils:    scope.utils,
+	}
+
+	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "serviceImplementation")
+}
+
+// renderSimpleServiceImplementationFiles 生成简化版服务实现类文件
+func (t *TypeScriptBackend) renderSimpleServiceImplementationFiles(scope *Scope, executeTpl *template.Template, basePath string) error {
+	// 为每个服务生成简化版实现类文件
+	for _, service := range scope.Services {
+		if err := t.renderSimpleServiceImplementationFile(scope, executeTpl, basePath, service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// renderSimpleServiceImplementationFile 生成单个服务的简化版实现类文件
+func (t *TypeScriptBackend) renderSimpleServiceImplementationFile(scope *Scope, executeTpl *template.Template, basePath string, service *parser.Service) error {
+	filename := filepath.Join(basePath, strings.ToLower(service.Name)+"client.ts")
+
+	// 创建只包含该服务的 scope
+	serviceScope := &Scope{
+		Filename: scope.Filename,
+		Package:  scope.Package,
+		Imports:  scope.Imports, // Imports are passed from the parent scope
+		Services: []*parser.Service{service},
+		utils:    scope.utils,
+	}
+
+	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "simpleServiceImplementation")
 }

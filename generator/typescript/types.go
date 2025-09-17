@@ -17,9 +17,30 @@ package typescript
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/cloudwego/thriftgo/parser"
 )
+
+// 全局 AST 缓存，用于模板函数访问
+var (
+	globalAST *parser.Thrift
+	astMutex  sync.RWMutex
+)
+
+// SetGlobalAST 设置全局 AST
+func SetGlobalAST(ast *parser.Thrift) {
+	astMutex.Lock()
+	defer astMutex.Unlock()
+	globalAST = ast
+}
+
+// GetGlobalAST 获取全局 AST
+func GetGlobalAST() *parser.Thrift {
+	astMutex.RLock()
+	defer astMutex.RUnlock()
+	return globalAST
+}
 
 // TypeMapping 定义 Thrift 类型到 TypeScript 类型的映射
 type TypeMapping struct {
@@ -243,6 +264,36 @@ func GetDefaultValue(field *parser.Field) string {
 	}
 }
 
+// GetDefaultValueForType 获取类型的默认值
+func GetDefaultValueForType(typ *parser.Type) string {
+	if typ == nil {
+		return "null"
+	}
+
+	switch typ.Category {
+	case parser.Category_Bool:
+		return "false"
+	case parser.Category_String:
+		return `""`
+	case parser.Category_Byte, parser.Category_I16, parser.Category_I32, parser.Category_I64, parser.Category_Double:
+		return "0"
+	case parser.Category_List:
+		return "[]"
+	case parser.Category_Set:
+		return "new Set()"
+	case parser.Category_Map:
+		return "{}"
+	case parser.Category_Enum:
+		// 对于枚举，返回第一个值
+		return "0"
+	case parser.Category_Struct, parser.Category_Union, parser.Category_Exception:
+		// 对于结构体类型，返回 null
+		return "null"
+	default:
+		return "null"
+	}
+}
+
 // GetConstantValue 获取常量的值
 func GetConstantValue(constant *parser.Constant) string {
 	if constant == nil || constant.Value == nil || constant.Value.TypedValue == nil {
@@ -271,4 +322,106 @@ func GetConstantValue(constant *parser.Constant) string {
 	default:
 		return "null"
 	}
+}
+
+// GetStructFields 获取结构体的字段列表
+// 这个函数需要在模板中通过其他方式调用，因为需要 AST 信息
+func GetStructFields(field *parser.Field) []*parser.Field {
+	if field == nil || field.Type == nil || !field.Type.Category.IsStructLike() {
+		return nil
+	}
+
+	// 这里需要从 AST 中查找结构体定义
+	// 由于模板中无法直接访问 AST，我们需要通过其他方式
+	// 暂时返回空，后续可以通过其他方式实现
+	return nil
+}
+
+// GetStructFieldAnnotations 获取结构体字段的注解信息
+// 从 AST 中动态获取结构体字段的注解信息
+func GetStructFieldAnnotations(field *parser.Field, ast *parser.Thrift) map[string]map[string]string {
+	annotations := make(map[string]map[string]string)
+
+	if field == nil || field.Type == nil || !field.Type.Category.IsStructLike() {
+		return annotations
+	}
+
+	// 查找结构体定义
+	structLike := findStructLikeByName(field.Type.Name, ast)
+	if structLike == nil {
+		return annotations
+	}
+
+	// 遍历结构体字段，收集注解信息
+	for _, structField := range structLike.Fields {
+		fieldAnnotations := make(map[string]string)
+
+		// 检查 api.path 注解
+		if pathAnno := structField.Annotations.Get("api.path"); len(pathAnno) > 0 {
+			fieldAnnotations["api.path"] = pathAnno[0]
+		}
+
+		// 检查 api.query 注解
+		if queryAnno := structField.Annotations.Get("api.query"); len(queryAnno) > 0 {
+			fieldAnnotations["api.query"] = queryAnno[0]
+		}
+
+		// 检查 api.body 注解
+		if bodyAnno := structField.Annotations.Get("api.body"); len(bodyAnno) > 0 {
+			fieldAnnotations["api.body"] = bodyAnno[0]
+		}
+
+		// 添加所有字段，包括没有注解的字段
+		annotations[structField.Name] = fieldAnnotations
+	}
+
+	return annotations
+}
+
+// findStructLikeByName 根据名称查找结构体定义
+func findStructLikeByName(name string, ast *parser.Thrift) *parser.StructLike {
+	// 提取结构体的实际名称（去掉命名空间前缀）
+	actualName := name
+	if lastDot := strings.LastIndex(name, "."); lastDot != -1 {
+		actualName = name[lastDot+1:]
+	}
+
+	// 在当前文件中查找
+	for _, structLike := range ast.Structs {
+		if structLike.Name == actualName {
+			return structLike
+		}
+	}
+
+	// 在包含的文件中查找
+	for _, include := range ast.Includes {
+		if include.Reference != nil {
+			for _, structLike := range include.Reference.Structs {
+				if structLike.Name == actualName {
+					return structLike
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// GetStructFieldAnnotationsForTemplate 模板中使用的结构体字段注解获取函数
+// 使用全局 AST 缓存来获取结构体字段的注解信息
+func GetStructFieldAnnotationsForTemplate(field *parser.Field) map[string]map[string]string {
+	ast := GetGlobalAST()
+	if ast == nil {
+		return make(map[string]map[string]string)
+	}
+	return GetStructFieldAnnotations(field, ast)
+}
+
+// IsStructField 检查字段是否为结构体类型
+func IsStructField(field *parser.Field) bool {
+	if field == nil || field.Type == nil {
+		return false
+	}
+
+	return field.Type.Category.IsStructLike()
 }

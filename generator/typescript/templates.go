@@ -14,7 +14,9 @@
 
 package typescript
 
-import "github.com/cloudwego/thriftgo/generator/typescript/templates"
+import (
+	"github.com/cloudwego/thriftgo/generator/typescript/templates"
+)
 
 // Templates 返回所有 TypeScript 模板
 func Templates() []string {
@@ -32,7 +34,6 @@ func Templates() []string {
 		templates.SingleEnumTemplate,
 		templates.SingleStructTemplate,
 		templates.SingleServiceTemplate,
-		templates.HttpClientTemplate,
-		templates.HttpClientAxiosTemplate,
+		templates.SimpleServiceImplementationTemplate,
 	}
 }

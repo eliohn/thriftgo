@@ -150,15 +150,20 @@ func (s *Scope) collectImports(ast *parser.Thrift) {
 
 	// 遍历所有结构体，收集外部类型引用
 	for _, structLike := range ast.Structs {
-		s.collectImportsFromStruct(structLike, importMap)
+		s.collectImportsFromStruct(structLike, importMap, ast)
 	}
 
 	for _, union := range ast.Unions {
-		s.collectImportsFromStruct(union, importMap)
+		s.collectImportsFromStruct(union, importMap, ast)
 	}
 
 	for _, exception := range ast.Exceptions {
-		s.collectImportsFromStruct(exception, importMap)
+		s.collectImportsFromStruct(exception, importMap, ast)
+	}
+
+	// 遍历所有服务，收集外部类型引用
+	for _, service := range ast.Services {
+		s.collectImportsFromService(service, importMap, ast)
 	}
 
 	// 获取当前文件的 TypeScript namespace
@@ -180,31 +185,46 @@ func (s *Scope) collectImports(ast *parser.Thrift) {
 }
 
 // collectImportsFromStruct 从结构体中收集导入信息
-func (s *Scope) collectImportsFromStruct(structLike *parser.StructLike, importMap map[string][]string) {
+func (s *Scope) collectImportsFromStruct(structLike *parser.StructLike, importMap map[string][]string, ast *parser.Thrift) {
 	for _, field := range structLike.Fields {
-		s.collectImportsFromType(field.Type, importMap)
+		s.collectImportsFromType(field.Type, importMap, ast)
 	}
 
 	// 收集展开字段的导入信息
 	if expandedStruct, exists := s.ExpandedStructs[structLike.Name]; exists {
 		for _, expandedField := range expandedStruct.ExpandedFields {
-			s.collectImportsFromType(expandedField.Type, importMap)
+			s.collectImportsFromType(expandedField.Type, importMap, ast)
+		}
+	}
+}
+
+// collectImportsFromService 从服务中收集导入信息
+func (s *Scope) collectImportsFromService(service *parser.Service, importMap map[string][]string, ast *parser.Thrift) {
+	for _, function := range service.Functions {
+		// 收集函数参数的导入
+		for _, arg := range function.Arguments {
+			s.collectImportsFromType(arg.Type, importMap, ast)
+		}
+
+		// 收集函数返回类型的导入
+		if function.FunctionType != nil {
+			s.collectImportsFromType(function.FunctionType, importMap, ast)
 		}
 	}
 }
 
 // collectImportsFromType 从类型中收集导入信息
-func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]string) {
+func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]string, ast *parser.Thrift) {
 	if typ == nil {
 		return
 	}
 
 	// 处理容器类型
 	if typ.ValueType != nil {
-		s.collectImportsFromType(typ.ValueType, importMap)
+		s.collectImportsFromType(typ.ValueType, importMap, ast)
 	}
 	if typ.KeyType != nil {
-		s.collectImportsFromType(typ.KeyType, importMap)
+		s.collectImportsFromType(typ.KeyType, importMap, ast)
 	}
 
 	// 处理外部类型引用
@@ -221,8 +241,11 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 					return
 				}
 
+				// 映射模块名到实际的 namespace
+				actualModule := s.mapModuleToNamespace(module, ast)
+
 				// 避免重复添加
-				types := importMap[module]
+				types := importMap[actualModule]
 				found := false
 				for _, t := range types {
 					if t == typeName {
@@ -231,7 +254,7 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 					}
 				}
 				if !found {
-					importMap[module] = append(types, typeName)
+					importMap[actualModule] = append(types, typeName)
 				}
 			}
 		} else {
@@ -417,30 +440,36 @@ func (u *CodeUtils) HandleOptions(options []plugin.Option) error {
 // BuildFuncMap 构建模板函数映射
 func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 	return map[string]interface{}{
-		"GetTypeScriptType":     GetTypeScriptType,
-		"GetFieldType":          GetFieldType,
-		"GetMethodSignature":    GetMethodSignature,
-		"GetInterfaceName":      GetInterfaceName,
-		"GetClassName":          GetClassName,
-		"GetEnumName":           GetEnumName,
-		"GetEnumValueName":      GetEnumValueName,
-		"GetPropertyName":       GetPropertyName,
-		"GetConstantName":       GetConstantName,
-		"IsOptional":            IsOptional,
-		"GetDefaultValue":       GetDefaultValue,
-		"GetConstantValue":      GetConstantValue,
-		"IsExpandField":         isExpandField,
-		"IsExpandableStruct":    isExpandableStruct,
-		"GetExpandedFields":     func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
-		"GetExpandedFieldNames": func(structLike *parser.StructLike) map[string]bool { return u.getExpandedFieldNames(structLike) },
+		"GetTypeScriptType":      GetTypeScriptType,
+		"GetFieldType":           GetFieldType,
+		"GetMethodSignature":     GetMethodSignature,
+		"GetInterfaceName":       GetInterfaceName,
+		"GetClassName":           GetClassName,
+		"GetEnumName":            GetEnumName,
+		"GetEnumValueName":       GetEnumValueName,
+		"GetPropertyName":        GetPropertyName,
+		"GetConstantName":        GetConstantName,
+		"IsOptional":             IsOptional,
+		"GetDefaultValue":        GetDefaultValue,
+		"GetDefaultValueForType": GetDefaultValueForType,
+		"GetConstantValue":       GetConstantValue,
+		"IsExpandField":          isExpandField,
+		"IsExpandableStruct":     isExpandableStruct,
+		"GetExpandedFields":      func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
+		"GetExpandedFieldNames":  func(structLike *parser.StructLike) map[string]bool { return u.getExpandedFieldNames(structLike) },
 		"IsFieldExpanded": func(field *parser.Field, expandedFields []*parser.Field) bool {
 			return u.isFieldExpanded(field, expandedFields)
 		},
-		"GetPackageName": func(s *Scope) string { return s.GetPackageName() },
-		"GetFileName":    func(s *Scope) string { return s.GetFileName() },
-		"ToTitle":        strings.Title,
-		"ToLower":        strings.ToLower,
-		"ToUpper":        strings.ToUpper,
+		"GetStructFields":                      GetStructFields,
+		"IsStructField":                        IsStructField,
+		"GetStructFieldAnnotations":            GetStructFieldAnnotations,
+		"GetStructFieldAnnotationsForTemplate": GetStructFieldAnnotationsForTemplate,
+		"GetPackageName":                       func(s *Scope) string { return s.GetPackageName() },
+		"GetFileName":                          func(s *Scope) string { return s.GetFileName() },
+		"ToTitle":                              strings.Title,
+		"ToLower":                              strings.ToLower,
+		"ToUpper":                              strings.ToUpper,
+		"HasSuffix":                            strings.HasSuffix,
 	}
 }
 
@@ -464,10 +493,41 @@ func (u *CodeUtils) CombineOutputPath(basePath string, ast *parser.Thrift) strin
 func (u *CodeUtils) getTypeScriptNamespace(ast *parser.Thrift) string {
 	for _, ns := range ast.Namespaces {
 		if ns.Language == "ts" || ns.Language == "typescript" {
-			return ns.Name
+			// 将点号转换为路径分隔符
+			return strings.ReplaceAll(ns.Name, ".", "/")
 		}
 	}
 	return ""
+}
+
+// mapModuleToNamespace 映射模块名到实际的 namespace
+func (s *Scope) mapModuleToNamespace(module string, ast *parser.Thrift) string {
+	// 根据 include 的文件名映射到实际的 namespace
+	// 从 AST 中的 include 信息来动态映射
+
+	for _, include := range ast.Includes {
+		if include.Reference == nil {
+			continue
+		}
+
+		// 提取文件名（去掉 .thrift 扩展名）
+		fileName := strings.TrimSuffix(filepath.Base(include.Path), ".thrift")
+
+		if fileName == module {
+			// 查找被引用文件的 TypeScript namespace
+			for _, ns := range include.Reference.Namespaces {
+				if ns.Language == "ts" || ns.Language == "typescript" {
+					// 将点号转换为路径分隔符
+					return strings.ReplaceAll(ns.Name, ".", "/")
+				}
+			}
+			// 如果没有找到 TypeScript namespace，使用文件名
+			return fileName
+		}
+	}
+
+	// 如果没有找到对应的 include，返回原始模块名
+	return module
 }
 
 // calculateRelativePath 计算相对路径
@@ -475,6 +535,22 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 	// 如果当前文件没有 namespace，目标文件也没有 namespace，使用相对路径
 	if currentNamespace == "" {
 		return "./" + targetModule
+	}
+
+	// 检查是否是同目录下的模块
+	// 例如：domain.base 和 domain.enums 都在 domain 目录下
+	currentParts := strings.Split(currentNamespace, "/")
+	targetParts := strings.Split(targetModule, "/")
+
+	// 如果目标模块的父目录与当前模块的父目录相同，使用相对路径
+	if len(currentParts) > 1 && len(targetParts) > 1 {
+		currentParent := strings.Join(currentParts[:len(currentParts)-1], "/")
+		targetParent := strings.Join(targetParts[:len(targetParts)-1], "/")
+
+		if currentParent == targetParent {
+			// 同目录下，使用相对路径
+			return "./" + targetParts[len(targetParts)-1]
+		}
 	}
 
 	// 在分离文件模式下，外部模块都在上级目录
