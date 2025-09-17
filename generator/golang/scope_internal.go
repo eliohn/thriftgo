@@ -751,8 +751,8 @@ func (s *Scope) collectActuallyUsedPackages() map[string]bool {
 	for _, st := range ss {
 		for _, f := range st.fields {
 			// Check normal field resolved type names
-			if f.typeName != "" && strings.Contains(string(f.typeName), ".") {
-				parts := strings.Split(string(f.typeName), ".")
+			if f.Type.Name != "" && strings.Contains(f.Type.Name, ".") && len(f.expandedFields) == 0 {
+				parts := strings.Split(f.Type.Name, ".")
 				if len(parts) >= 2 {
 					ns := strings.Join(parts[:len(parts)-1], ".")
 					actualUsedPackages[ns] = true
@@ -761,8 +761,8 @@ func (s *Scope) collectActuallyUsedPackages() map[string]bool {
 
 			// Check expanded field resolved type names
 			for _, expandedField := range f.expandedFields {
-				if expandedField.typeName != "" && strings.Contains(string(expandedField.typeName), ".") {
-					parts := strings.Split(string(expandedField.typeName), ".")
+				if expandedField.Type.Name != "" && strings.Contains(expandedField.Type.Name, ".") {
+					parts := strings.Split(expandedField.Type.Name, ".")
 					if len(parts) >= 2 {
 						ns := strings.Join(parts[:len(parts)-1], ".")
 						actualUsedPackages[ns] = true
@@ -774,8 +774,8 @@ func (s *Scope) collectActuallyUsedPackages() map[string]bool {
 
 	// Check all typedefs resolved type names
 	for _, t := range s.typedefs {
-		if t.typeName != "" && strings.Contains(string(t.typeName), ".") {
-			parts := strings.Split(string(t.typeName), ".")
+		if t.Type.Name != "" && strings.Contains(t.Type.Name, ".") {
+			parts := strings.Split(t.Type.Name, ".")
 			if len(parts) >= 2 {
 				ns := strings.Join(parts[:len(parts)-1], ".")
 				actualUsedPackages[ns] = true
@@ -785,8 +785,8 @@ func (s *Scope) collectActuallyUsedPackages() map[string]bool {
 
 	// Check all constants resolved type names
 	for _, v := range s.constants {
-		if v.typeName != "" && strings.Contains(string(v.typeName), ".") {
-			parts := strings.Split(string(v.typeName), ".")
+		if v.Type.Name != "" && strings.Contains(v.Type.Name, ".") {
+			parts := strings.Split(v.Type.Name, ".")
 			if len(parts) >= 2 {
 				ns := strings.Join(parts[:len(parts)-1], ".")
 				actualUsedPackages[ns] = true
@@ -799,8 +799,8 @@ func (s *Scope) collectActuallyUsedPackages() map[string]bool {
 		for _, fun := range svc.functions {
 			// Check function argument types
 			for _, arg := range fun.arguments {
-				if arg.typeName != "" && strings.Contains(string(arg.typeName), ".") {
-					parts := strings.Split(string(arg.typeName), ".")
+				if arg.Type.Name != "" && strings.Contains(arg.Type.Name, ".") {
+					parts := strings.Split(arg.Type.Name, ".")
 					if len(parts) >= 2 {
 						ns := strings.Join(parts[:len(parts)-1], ".")
 						actualUsedPackages[ns] = true
@@ -819,8 +819,8 @@ func (s *Scope) collectActuallyUsedPackages() map[string]bool {
 
 			// Check function throw types
 			for _, throw := range fun.throws {
-				if throw.typeName != "" && strings.Contains(string(throw.typeName), ".") {
-					parts := strings.Split(string(throw.typeName), ".")
+				if throw.Type.Name != "" && strings.Contains(throw.Type.Name, ".") {
+					parts := strings.Split(throw.Type.Name, ".")
 					if len(parts) >= 2 {
 						ns := strings.Join(parts[:len(parts)-1], ".")
 						actualUsedPackages[ns] = true
@@ -850,6 +850,7 @@ func (s *Scope) collectExpandedFieldPackages() map[string]bool {
 					parts := strings.Split(f.Field.Type.Name, ".")
 					if len(parts) >= 2 {
 						ns := strings.Join(parts[:len(parts)-1], ".")
+						//log.Println("[DEBUG] 要删除的namespace:", ns)
 						expandedFieldPackages[ns] = true
 					}
 				}
