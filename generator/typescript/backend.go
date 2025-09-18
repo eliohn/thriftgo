@@ -367,12 +367,20 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	importMap := make(map[string][]string)
 	localTypes := make(map[string]bool)
 
-	// 收集结构体字段的导入
+	// 获取展开字段名映射
+	expandedFieldNames := make(map[string]bool)
+	if expandedStruct, exists := scope.ExpandedStructs[structLike.Name]; exists {
+		expandedFieldNames = expandedStruct.ExpandedFieldNames
+	}
+
+	// 只收集未被展开的字段的导入
 	for _, field := range structLike.Fields {
-		scope.collectImportsFromType(field.Type, importMap, ast)
-		// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
-		if field.Type != nil && !strings.Contains(field.Type.Name, ".") && !t.isPrimitiveType(field.Type) {
-			localTypes[field.Type.Name] = true
+		if !expandedFieldNames[field.Name] {
+			scope.collectImportsFromType(field.Type, importMap, ast)
+			// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
+			if field.Type != nil && !strings.Contains(field.Type.Name, ".") && !t.isPrimitiveType(field.Type) {
+				localTypes[field.Type.Name] = true
+			}
 		}
 	}
 
@@ -439,11 +447,12 @@ func (t *TypeScriptBackend) isPrimitiveType(typ *parser.Type) bool {
 	if typ == nil {
 		return false
 	}
-
 	switch typ.Category {
 	case parser.Category_Bool, parser.Category_Byte, parser.Category_I16,
 		parser.Category_I32, parser.Category_I64, parser.Category_Double,
 		parser.Category_String, parser.Category_Binary:
+		return true
+	case parser.Category_List, parser.Category_Map, parser.Category_Set:
 		return true
 	default:
 		return false

@@ -15,7 +15,6 @@
 package typescript
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -90,6 +89,11 @@ func (s *Scope) GetFileName() string {
 	base := filepath.Base(s.Filename)
 	name := strings.TrimSuffix(base, ".thrift")
 	return name + ".ts"
+}
+
+// GetSourceThriftFile 获取来源的 Thrift 文件路径
+func (s *Scope) GetSourceThriftFile() string {
+	return s.Filename
 }
 
 // BuildScope 构建 TypeScript 作用域
@@ -187,8 +191,17 @@ func (s *Scope) collectImports(ast *parser.Thrift) {
 
 // collectImportsFromStruct 从结构体中收集导入信息
 func (s *Scope) collectImportsFromStruct(structLike *parser.StructLike, importMap map[string][]string, ast *parser.Thrift) {
+	// 获取展开字段名映射
+	expandedFieldNames := make(map[string]bool)
+	if expandedStruct, exists := s.ExpandedStructs[structLike.Name]; exists {
+		expandedFieldNames = expandedStruct.ExpandedFieldNames
+	}
+
+	// 只收集未被展开的字段的导入信息
 	for _, field := range structLike.Fields {
-		s.collectImportsFromType(field.Type, importMap, ast)
+		if !expandedFieldNames[field.Name] {
+			s.collectImportsFromType(field.Type, importMap, ast)
+		}
 	}
 
 	// 收集展开字段的导入信息
@@ -289,20 +302,14 @@ func (s *Scope) collectExpandedFields(structLike *parser.StructLike, ast *parser
 	var expandedFields []*parser.Field
 	expandedFieldNames := make(map[string]bool)
 
-	fmt.Printf("DEBUG: collectExpandedFields for struct: %s\n", structLike.Name)
-
 	for _, field := range structLike.Fields {
 		// 检查字段是否应该展开
 		shouldExpand := isExpandField(field)
-		fmt.Printf("DEBUG: field %s, shouldExpand: %v\n", field.Name, shouldExpand)
-
 		// 检查引用的结构体是否可展开
 		referencedStruct := s.getReferencedStruct(field, ast)
 		structIsExpandable := referencedStruct != nil && isExpandableStruct(referencedStruct)
-		fmt.Printf("DEBUG: field %s, referencedStruct: %v, structIsExpandable: %v\n", field.Name, referencedStruct != nil, structIsExpandable)
 
 		if shouldExpand || structIsExpandable {
-			fmt.Printf("DEBUG: expanding field %s\n", field.Name)
 			// 记录原始字段被展开了
 			expandedFieldNames[field.Name] = true
 
@@ -322,8 +329,6 @@ func (s *Scope) collectExpandedFields(structLike *parser.StructLike, ast *parser
 			}
 		}
 	}
-
-	fmt.Printf("DEBUG: collected %d expanded fields for %s, expandedFieldNames: %v\n", len(expandedFields), structLike.Name, expandedFieldNames)
 	return expandedFields, expandedFieldNames
 }
 
@@ -508,6 +513,7 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"GetStructFieldAnnotationsForTemplate": GetStructFieldAnnotationsForTemplate,
 		"GetPackageName":                       func(s *Scope) string { return s.GetPackageName() },
 		"GetFileName":                          func(s *Scope) string { return s.GetFileName() },
+		"GetSourceThriftFile":                  func(s *Scope) string { return s.GetSourceThriftFile() },
 		"ToTitle":                              strings.Title,
 		"ToLower":                              strings.ToLower,
 		"ToUpper":                              strings.ToUpper,
@@ -547,6 +553,10 @@ func (s *Scope) mapModuleToNamespace(module string, ast *parser.Thrift) string {
 	// 根据 include 的文件名映射到实际的 namespace
 	// 从 AST 中的 include 信息来动态映射
 
+	// 优先选择相对路径的 include 文件（更可能是相关的）
+	var relativeIncludes []*parser.Include
+	var absoluteIncludes []*parser.Include
+
 	for _, include := range ast.Includes {
 		if include.Reference == nil {
 			continue
@@ -556,16 +566,29 @@ func (s *Scope) mapModuleToNamespace(module string, ast *parser.Thrift) string {
 		fileName := strings.TrimSuffix(filepath.Base(include.Path), ".thrift")
 
 		if fileName == module {
-			// 查找被引用文件的 TypeScript namespace
-			for _, ns := range include.Reference.Namespaces {
-				if ns.Language == "ts" || ns.Language == "typescript" {
-					// 将点号转换为路径分隔符
-					return strings.ReplaceAll(ns.Name, ".", "/")
-				}
+			if strings.HasPrefix(include.Path, "../") || strings.HasPrefix(include.Path, "./") {
+				relativeIncludes = append(relativeIncludes, include)
+			} else {
+				absoluteIncludes = append(absoluteIncludes, include)
 			}
-			// 如果没有找到 TypeScript namespace，使用文件名
-			return fileName
 		}
+	}
+
+	// 优先使用相对路径的 include
+	includes := append(relativeIncludes, absoluteIncludes...)
+
+	for _, include := range includes {
+		// 查找被引用文件的 TypeScript namespace
+		for _, ns := range include.Reference.Namespaces {
+			if ns.Language == "ts" || ns.Language == "typescript" {
+				// 将点号转换为路径分隔符
+				result := strings.ReplaceAll(ns.Name, ".", "/")
+				return result
+			}
+		}
+		// 如果没有找到 TypeScript namespace，使用文件名
+		fileName := strings.TrimSuffix(filepath.Base(include.Path), ".thrift")
+		return fileName
 	}
 
 	// 如果没有找到对应的 include，返回原始模块名
@@ -578,7 +601,6 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 	if currentNamespace == "" {
 		return "./" + targetModule
 	}
-
 	// 检查是否是同目录下的模块
 	// 例如：domain.base 和 domain.enums 都在 domain 目录下
 	currentParts := strings.Split(currentNamespace, "/")
@@ -595,8 +617,18 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 		}
 	}
 
-	// 在分离文件模式下，外部模块都在上级目录
-	return "../" + targetModule
+	// 计算需要向上几级目录
+	// 例如：从 domain/merchantVO 到 common/base 需要向上 2 级
+	currentDepth := len(currentParts)
+	// 计算向上级数
+	upLevels := currentDepth
+	// 构建相对路径
+	var pathParts []string
+	for i := 0; i < upLevels; i++ {
+		pathParts = append(pathParts, "..")
+	}
+	pathParts = append(pathParts, targetParts...)
+	return strings.Join(pathParts, "/")
 }
 
 // isTypeDefinedInCurrentFile 检查类型是否在当前文件中定义
