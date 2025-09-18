@@ -377,10 +377,8 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	for _, field := range structLike.Fields {
 		if !expandedFieldNames[field.Name] {
 			scope.collectImportsFromType(field.Type, importMap, ast)
-			// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
-			if field.Type != nil && !strings.Contains(field.Type.Name, ".") && !t.isPrimitiveType(field.Type) {
-				localTypes[field.Type.Name] = true
-			}
+			// 检查字段类型及其容器类型中的本地类型引用
+			t.collectLocalTypesFromType(field.Type, localTypes)
 		}
 	}
 
@@ -388,10 +386,8 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	if expandedStruct, exists := scope.ExpandedStructs[structLike.Name]; exists {
 		for _, expandedField := range expandedStruct.ExpandedFields {
 			scope.collectImportsFromType(expandedField.Type, importMap, ast)
-			// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
-			if expandedField.Type != nil && !strings.Contains(expandedField.Type.Name, ".") && !t.isPrimitiveType(expandedField.Type) {
-				localTypes[expandedField.Type.Name] = true
-			}
+			// 检查字段类型及其容器类型中的本地类型引用
+			t.collectLocalTypesFromType(expandedField.Type, localTypes)
 		}
 	}
 
@@ -456,6 +452,26 @@ func (t *TypeScriptBackend) isPrimitiveType(typ *parser.Type) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// collectLocalTypesFromType 从类型中收集本地类型引用
+func (t *TypeScriptBackend) collectLocalTypesFromType(typ *parser.Type, localTypes map[string]bool) {
+	if typ == nil {
+		return
+	}
+
+	// 处理容器类型
+	if typ.ValueType != nil {
+		t.collectLocalTypesFromType(typ.ValueType, localTypes)
+	}
+	if typ.KeyType != nil {
+		t.collectLocalTypesFromType(typ.KeyType, localTypes)
+	}
+
+	// 检查是否是本地类型引用（不包含点号的类型名且不是基本类型）
+	if typ.Name != "" && !strings.Contains(typ.Name, ".") && !t.isPrimitiveType(typ) {
+		localTypes[typ.Name] = true
 	}
 }
 

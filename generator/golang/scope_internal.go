@@ -904,10 +904,12 @@ func (s *Scope) resolveExpandedFields(f *Field, resolver *Resolver, frugalResolv
 			if len(parts) >= 2 {
 				ns := strings.Join(parts[:len(parts)-1], ".")
 				for _, inc := range s.includes {
-					for _, refInc := range inc.Scope.includes {
-						if refInc != nil && refInc.Scope != nil && refInc.PackageName == ns {
-							pkgName := s.includeIDL(cu, refInc.Scope.ast)
-							s.imports.UseStdLibrary(pkgName)
+					if inc != nil && inc.Scope != nil {
+						for _, refInc := range inc.Scope.includes {
+							if refInc != nil && refInc.Scope != nil && refInc.PackageName == ns {
+								pkgName := s.includeIDL(cu, refInc.Scope.ast)
+								s.imports.UseStdLibrary(pkgName)
+							}
 						}
 					}
 				}

@@ -29,6 +29,7 @@ const SimpleServiceImplementationTemplate = `
 // 导入服务接口
 import { I{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
 import axios from 'axios';
+import { BizException } from "@/types/exception"
 
 /**
  * {{ GetInterfaceName .Name }} Axios HTTP 客户端实现
@@ -57,7 +58,7 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
    * @returns void
 {{- end }}
    */
-  async {{ GetPropertyName .Name }}({{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }}{{ end }}): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
+  async {{ GetPropertyName .Name }}({{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyName .Name }}{{ if and (IsOptional .) (not (IsStructField .)) }}?{{ end }}: {{ GetFieldType . }}{{ end }}): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
     try {
       let url = '{{ if .Annotations.Get "api.get" }}{{ index (.Annotations.Get "api.get") 0 }}{{ else if .Annotations.Get "api.post" }}{{ index (.Annotations.Get "api.post") 0 }}{{ else if .Annotations.Get "api.put" }}{{ index (.Annotations.Get "api.put") 0 }}{{ else if .Annotations.Get "api.delete" }}{{ index (.Annotations.Get "api.delete") 0 }}{{ end }}';
 {{- range $index, $arg := .Arguments }}
@@ -220,6 +221,9 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- end }}
       
       if (response.status >= 200 && response.status < 300) {
+     	if (response.data.code !== 0) {
+          throw new BizException(response.data.code, response.data.msg);
+        }
         return response.data;
       } else {
         throw new Error(` + "`" + `HTTP ${response.status}: ${response.statusText}` + "`" + `);

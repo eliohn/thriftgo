@@ -274,7 +274,9 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 			// 处理本地类型引用（不包含点号）
 			// 检查是否是当前文件中定义的类型
 			if !s.isTypeDefinedInCurrentFile(typ.Name) {
-				// 这是一个未定义的类型，可能是错误
+				// 对于本地类型引用，即使不在当前文件中定义，
+				// 在分离文件模式下也需要导入（因为每个类型都会生成到单独的文件中）
+				// 这里不需要特殊处理，让调用方处理导入逻辑
 				return
 			}
 		}
@@ -696,6 +698,53 @@ func (s *Scope) isTypeDefinedInCurrentFile(typeName string) bool {
 	for _, typedef := range s.Typedefs {
 		if typedef.Alias == typeName {
 			return true
+		}
+	}
+
+	return false
+}
+
+// isTypeDefinedInOtherFiles 检查类型是否在其他文件中定义
+func (s *Scope) isTypeDefinedInOtherFiles(typeName string, ast *parser.Thrift) bool {
+	// 遍历所有包含的文件
+	for _, include := range ast.Includes {
+		if include.Reference == nil {
+			continue
+		}
+
+		// 检查枚举
+		for _, enum := range include.Reference.Enums {
+			if enum.Name == typeName {
+				return true
+			}
+		}
+
+		// 检查结构体
+		for _, structLike := range include.Reference.Structs {
+			if structLike.Name == typeName {
+				return true
+			}
+		}
+
+		// 检查联合体
+		for _, union := range include.Reference.Unions {
+			if union.Name == typeName {
+				return true
+			}
+		}
+
+		// 检查异常
+		for _, exception := range include.Reference.Exceptions {
+			if exception.Name == typeName {
+				return true
+			}
+		}
+
+		// 检查类型别名
+		for _, typedef := range include.Reference.Typedefs {
+			if typedef.Alias == typeName {
+				return true
+			}
 		}
 	}
 

@@ -256,7 +256,7 @@ func GetConstantName(name string) string {
 
 // IsOptional 检查字段是否可选
 func IsOptional(field *parser.Field) bool {
-	return field.Requiredness == parser.FieldType_Optional
+	return field.Requiredness != parser.FieldType_Required
 }
 
 // GetDefaultValue 获取字段的默认值
@@ -456,50 +456,50 @@ func FormatCommentForJSDoc(comment string) string {
 	if comment == "" {
 		return ""
 	}
-	
+
 	// 清理注释内容
 	comment = strings.TrimSpace(comment)
-	
+
 	// 移除 Thrift 注释标记
 	comment = strings.TrimPrefix(comment, "//")
 	comment = strings.TrimPrefix(comment, "/*")
 	comment = strings.TrimSuffix(comment, "*/")
 	comment = strings.TrimSpace(comment)
-	
+
 	// 如果注释为空，返回空字符串
 	if comment == "" {
 		return ""
 	}
-	
+
 	// 将多行注释转换为 JSDoc 格式
 	lines := strings.Split(comment, "\n")
 	var result []string
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		
+
 		// 移除行首的注释标记
 		line = strings.TrimPrefix(line, "//")
 		line = strings.TrimPrefix(line, "/*")
 		line = strings.TrimSuffix(line, "*/")
 		line = strings.TrimSpace(line)
-		
+
 		// 移除行首的 * 符号（如果存在）
 		line = strings.TrimPrefix(line, "*")
 		line = strings.TrimSpace(line)
-		
+
 		if line != "" {
 			result = append(result, " * "+line)
 		}
 	}
-	
+
 	if len(result) == 0 {
 		return ""
 	}
-	
+
 	return "\n/**\n" + strings.Join(result, "\n") + "\n */"
 }
 
