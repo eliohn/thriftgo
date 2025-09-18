@@ -573,25 +573,39 @@ func (s *Scope) mapModuleToNamespace(module string, ast *parser.Thrift) string {
 			}
 		}
 	}
+	// 如果没有找到直接包含的文件，递归查找间接包含的文件
+	return s.findModuleNamespaceRecursively(module, ast, make(map[string]bool))
+}
 
-	// 优先使用相对路径的 include
-	includes := append(relativeIncludes, absoluteIncludes...)
-
-	for _, include := range includes {
-		// 查找被引用文件的 TypeScript namespace
-		for _, ns := range include.Reference.Namespaces {
-			if ns.Language == "ts" || ns.Language == "typescript" {
-				// 将点号转换为路径分隔符
-				result := strings.ReplaceAll(ns.Name, ".", "/")
-				return result
-			}
-		}
-		// 如果没有找到 TypeScript namespace，使用文件名
-		fileName := strings.TrimSuffix(filepath.Base(include.Path), ".thrift")
-		return fileName
+// findModuleNamespaceRecursively 递归查找模块的 namespace
+func (s *Scope) findModuleNamespaceRecursively(module string, ast *parser.Thrift, visited map[string]bool) string {
+	if visited[ast.Filename] {
+		return module
 	}
+	visited[ast.Filename] = true
+	for _, include := range ast.Includes {
+		if include.Reference == nil {
+			continue
+		}
+		fileName := strings.TrimSuffix(filepath.Base(include.Path), ".thrift")
+		if fileName == module {
+			for _, ns := range include.Reference.Namespaces {
+				if ns.Language == "ts" || ns.Language == "typescript" {
+					// 将点号转换为路径分隔符
+					result := strings.ReplaceAll(ns.Name, ".", "/")
+					return result
+				}
+			}
+			// 如果没有找到 TypeScript namespace，使用文件名
+			fileName := strings.TrimSuffix(filepath.Base(include.Path), ".thrift")
+			return fileName
+		}
 
-	// 如果没有找到对应的 include，返回原始模块名
+		// 递归查找间接包含的文件
+		if result := s.findModuleNamespaceRecursively(module, include.Reference, visited); result != module {
+			return result
+		}
+	}
 	return module
 }
 
