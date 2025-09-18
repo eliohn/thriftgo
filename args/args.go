@@ -27,7 +27,9 @@ import (
 
 	"github.com/cloudwego/thriftgo/generator"
 	"github.com/cloudwego/thriftgo/generator/backend"
+	"github.com/cloudwego/thriftgo/generator/fastgo"
 	"github.com/cloudwego/thriftgo/generator/golang"
+	"github.com/cloudwego/thriftgo/generator/typescript"
 	"github.com/cloudwego/thriftgo/plugin"
 )
 
@@ -244,14 +246,21 @@ Options:
   --check-keywords    Check if any identifier using a keyword in common languages. 
   --plugin-time-limit Set the execution time limit for plugins. Naturally 0 means no limit.
 
-Available generators (and options): go
+Available generators (and options):
 `)
-	// print backend options
-	b := new(golang.GoBackend)
-	name, lang := b.Name(), b.Lang()
-	println(fmt.Sprintf("  %s (%s):", name, lang))
-	println(align(b.Options()))
 
+	// 动态显示所有可用的生成器
+	generators := []backend.Backend{
+		new(golang.GoBackend),
+		new(fastgo.FastGoBackend),
+		new(typescript.TypeScriptBackend),
+	}
+
+	for _, b := range generators {
+		name, lang := b.Name(), b.Lang()
+		println(fmt.Sprintf("  %s (%s):", name, lang))
+		println(align(b.Options()))
+	}
 }
 
 // align the help strings for plugin options.

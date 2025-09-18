@@ -18,8 +18,21 @@ package templates
 const StructTemplate = `
 {{- define "struct" -}}
 export interface {{ GetInterfaceName .Name }} {
+{{- $expandedFields := GetExpandedFields . }}
+{{- $expandedFieldNames := GetExpandedFieldNames . }}
+// DEBUG: expandedFieldNames = {{ $expandedFieldNames }}
 {{- range .Fields }}
+{{- $isExpanded := index $expandedFieldNames .Name }}
+{{- if not $isExpanded }}
   {{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
+{{- else }}
+  // {{ GetPropertyName .Name }} is expanded ({{ $isExpanded }})
+{{- end }}
+{{- end }}
+{{- if $expandedFields }}
+{{- range $expandedFields }}
+  {{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
+{{- end }}
 {{- end }}
 }
 {{- end -}}

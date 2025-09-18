@@ -388,8 +388,8 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	}
 
 	// 获取当前文件的 TypeScript namespace
-	// 在分离文件模式下，当前 namespace 是 test_temp
-	currentNamespace := "test_temp"
+	// 在分离文件模式下，需要根据结构体的实际位置确定 namespace
+	currentNamespace := t.utils.getTypeScriptNamespace(ast)
 
 	// 转换为 ImportInfo 列表
 	var imports []ImportInfo

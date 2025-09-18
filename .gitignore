@@ -8,3 +8,4 @@ gen-*
 .idea
 tool/trimmer/trimmer_test
 output
+*.exe

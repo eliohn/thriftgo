@@ -15,6 +15,7 @@
 package typescript
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -288,15 +289,20 @@ func (s *Scope) collectExpandedFields(structLike *parser.StructLike, ast *parser
 	var expandedFields []*parser.Field
 	expandedFieldNames := make(map[string]bool)
 
+	fmt.Printf("DEBUG: collectExpandedFields for struct: %s\n", structLike.Name)
+
 	for _, field := range structLike.Fields {
 		// 检查字段是否应该展开
 		shouldExpand := isExpandField(field)
+		fmt.Printf("DEBUG: field %s, shouldExpand: %v\n", field.Name, shouldExpand)
 
 		// 检查引用的结构体是否可展开
 		referencedStruct := s.getReferencedStruct(field, ast)
 		structIsExpandable := referencedStruct != nil && isExpandableStruct(referencedStruct)
+		fmt.Printf("DEBUG: field %s, referencedStruct: %v, structIsExpandable: %v\n", field.Name, referencedStruct != nil, structIsExpandable)
 
 		if shouldExpand || structIsExpandable {
+			fmt.Printf("DEBUG: expanding field %s\n", field.Name)
 			// 记录原始字段被展开了
 			expandedFieldNames[field.Name] = true
 
@@ -317,6 +323,7 @@ func (s *Scope) collectExpandedFields(structLike *parser.StructLike, ast *parser
 		}
 	}
 
+	fmt.Printf("DEBUG: collected %d expanded fields for %s, expandedFieldNames: %v\n", len(expandedFields), structLike.Name, expandedFieldNames)
 	return expandedFields, expandedFieldNames
 }
 
@@ -360,7 +367,22 @@ func (s *Scope) getReferencedStruct(field *parser.Field, ast *parser.Thrift) *pa
 
 	// 遍历所有包含的文件
 	for _, include := range ast.Includes {
-		if include.Path == moduleName+".thrift" {
+		// 检查路径是否匹配（支持相对路径）
+		includePath := include.Path
+		expectedPath := moduleName + ".thrift"
+
+		// 检查完整路径匹配
+		if includePath == expectedPath {
+			// 完整路径匹配
+		} else {
+			// 检查文件名匹配（处理相对路径）
+			includeFileName := filepath.Base(includePath)
+			if includeFileName != expectedPath {
+				continue
+			}
+		}
+
+		if include.Reference != nil {
 			// 在包含的文件中查找结构体
 			for _, structLike := range include.Reference.Structs {
 				if structLike.Name == structName {
@@ -459,7 +481,26 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"GetExpandedFields":       func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
 		"GetExpandedFieldNames":   func(structLike *parser.StructLike) map[string]bool { return u.getExpandedFieldNames(structLike) },
 		"IsFieldExpanded": func(field *parser.Field, expandedFields []*parser.Field) bool {
-			return u.isFieldExpanded(field, expandedFields)
+			// 检查字段是否应该展开
+			shouldExpand := isExpandField(field)
+			if shouldExpand {
+				return true
+			}
+
+			// 检查引用的结构体是否可展开
+			if field.Type != nil && field.Type.Category.IsStructLike() {
+				// 检查引用的结构体是否可展开
+				// 如果该字段引用的结构体是可展开的，则该字段应该被展开
+				if u.rootScope != nil {
+					// 使用完整的 getReferencedStruct 实现
+					referencedStruct := u.getReferencedStructFromAST(field)
+					if referencedStruct != nil && isExpandableStruct(referencedStruct) {
+						return true
+					}
+				}
+			}
+
+			return false
 		},
 		"GetStructFields":                      GetStructFields,
 		"IsStructField":                        IsStructField,
@@ -605,7 +646,7 @@ func (u *CodeUtils) GetFilename(ast *parser.Thrift) string {
 	return name + ".ts"
 }
 
-// getExpandedFields 获取结构体的展开字段
+// getExpandedFields 获取结构体的展开字段（无调试信息）
 func (u *CodeUtils) getExpandedFields(structLike *parser.StructLike) []*parser.Field {
 	if u.rootScope == nil {
 		return nil
@@ -633,32 +674,8 @@ func (u *CodeUtils) getExpandedFieldNames(structLike *parser.StructLike) map[str
 	return expandedStruct.ExpandedFieldNames
 }
 
-// isFieldExpanded 检查字段是否被展开
-func (u *CodeUtils) isFieldExpanded(field *parser.Field, expandedFields []*parser.Field) bool {
-	// 检查字段是否应该展开
-	shouldExpand := isExpandField(field)
-	if shouldExpand {
-		return true
-	}
-
-	// 检查引用的结构体是否可展开
-	if field.Type != nil && field.Type.Category.IsStructLike() {
-		// 检查引用的结构体是否可展开
-		// 如果该字段引用的结构体是可展开的，则该字段应该被展开
-		if u.rootScope != nil {
-			// 重新获取引用的结构体来判断是否可展开
-			referencedStruct := u.getReferencedStruct(field)
-			if referencedStruct != nil && isExpandableStruct(referencedStruct) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// getReferencedStruct 获取引用的结构体（简化版本）
-func (u *CodeUtils) getReferencedStruct(field *parser.Field) *parser.StructLike {
+// getReferencedStructFromAST 获取引用的结构体（使用完整 AST 信息）
+func (u *CodeUtils) getReferencedStructFromAST(field *parser.Field) *parser.StructLike {
 	if field.Type == nil || !field.Type.Category.IsStructLike() {
 		return nil
 	}
@@ -674,12 +691,21 @@ func (u *CodeUtils) getReferencedStruct(field *parser.Field) *parser.StructLike 
 		return nil
 	}
 
+	_ = parts[0] // moduleName
+	_ = parts[1] // structName
+
 	// 遍历所有包含的文件
 	if u.rootScope != nil {
-		// 这里需要从 AST 中获取包含信息，暂时简化处理
-		// 直接返回 nil，让调用方处理
+		// 从当前作用域获取 AST 信息
+		// 这里需要从其他地方获取 AST，暂时返回 nil
+		// 实际实现中需要从 backend 或其他地方获取完整的 AST
 		return nil
 	}
 
 	return nil
+}
+
+// getReferencedStruct 获取引用的结构体（简化版本）
+func (u *CodeUtils) getReferencedStruct(field *parser.Field) *parser.StructLike {
+	return u.getReferencedStructFromAST(field)
 }
