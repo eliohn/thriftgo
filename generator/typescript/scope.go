@@ -316,12 +316,13 @@ func (s *Scope) collectExpandedFields(structLike *parser.StructLike, ast *parser
 			if referencedStruct != nil {
 				for _, refField := range referencedStruct.Fields {
 					expandedField := &parser.Field{
-						Name:         refField.Name, // 直接使用原始字段名
-						Type:         refField.Type,
-						ID:           refField.ID,
-						Requiredness: refField.Requiredness,
-						Default:      refField.Default,
-						Annotations:  refField.Annotations,
+						Name:             refField.Name, // 直接使用原始字段名
+						Type:             refField.Type,
+						ID:               refField.ID,
+						Requiredness:     refField.Requiredness,
+						Default:          refField.Default,
+						Annotations:      refField.Annotations,
+						ReservedComments: refField.ReservedComments, // 复制注释
 					}
 					expandedFields = append(expandedFields, expandedField)
 				}
@@ -629,20 +630,21 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 	// 如果当前文件没有 namespace，目标文件也没有 namespace，使用相对路径
 	if currentNamespace == "" {
 		return "./" + targetModule
+
 	}
-	// 检查是否是同目录下的模块
-	// 例如：domain.base 和 domain.enums 都在 domain 目录下
+
 	currentParts := strings.Split(currentNamespace, "/")
 	targetParts := strings.Split(targetModule, "/")
 
-	// 如果目标模块的父目录与当前模块的父目录相同，使用相对路径
+	// 检查是否是兄弟目录（有相同的父目录）
+	// 例如：common.base 到 common.enums 需要 ../enums
 	if len(currentParts) > 1 && len(targetParts) > 1 {
 		currentParent := strings.Join(currentParts[:len(currentParts)-1], "/")
 		targetParent := strings.Join(targetParts[:len(targetParts)-1], "/")
 
 		if currentParent == targetParent {
-			// 同目录下，使用相对路径
-			return "./" + targetParts[len(targetParts)-1]
+			// 兄弟目录，使用 ../ 前缀
+			return "../" + targetParts[len(targetParts)-1]
 		}
 	}
 
