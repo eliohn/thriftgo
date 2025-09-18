@@ -188,6 +188,31 @@ func GetMethodSignature(method *parser.Function) string {
 	return fmt.Sprintf("(%s): %s", strings.Join(params, ", "), returnType)
 }
 
+// GetAsyncMethodSignature 获取异步方法的 TypeScript 签名
+func GetAsyncMethodSignature(method *parser.Function) string {
+	var params []string
+	var returnType string
+
+	// 处理参数
+	for _, param := range method.Arguments {
+		paramType := GetFieldType(param)
+		paramName := param.Name
+		if param.Requiredness == parser.FieldType_Optional {
+			paramName += "?"
+		}
+		params = append(params, fmt.Sprintf("%s: %s", paramName, paramType))
+	}
+
+	// 处理返回值 - 异步方法返回 Promise
+	if method.FunctionType != nil {
+		returnType = fmt.Sprintf("Promise<%s>", GetTypeScriptType(method.FunctionType))
+	} else {
+		returnType = "Promise<void>"
+	}
+
+	return fmt.Sprintf("(%s): %s", strings.Join(params, ", "), returnType)
+}
+
 // GetInterfaceName 获取接口名称
 func GetInterfaceName(name string) string {
 	return strings.Title(name)

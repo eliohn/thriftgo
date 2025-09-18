@@ -26,17 +26,8 @@ const SimpleServiceImplementationTemplate = `
 
 {{- range .Services }}
 // 导入服务接口
-import { {{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
-
-/**
- * {{ GetInterfaceName .Name }} 异步接口
- * 用于 Axios 客户端等异步实现
- */
-export interface Async{{ GetInterfaceName .Name }} {
-{{- range .Functions }}
-  {{ GetPropertyName .Name }}({{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }}{{ end }}): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}>;
-{{- end }}
-}
+import { {{ GetInterfaceName .Name }}, Async{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
+import axios from 'axios';
 
 /**
  * {{ GetInterfaceName .Name }} Axios HTTP 客户端实现
@@ -44,42 +35,6 @@ export interface Async{{ GetInterfaceName .Name }} {
  * 支持使用项目中已实例化的 axios 实例
  */
 export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInterfaceName .Name }} {
-  private axios: any;
-  private baseURL: string;
-
-  constructor(baseURL?: string, axiosInstance?: any) {
-    // 优先使用传入的 baseURL，然后尝试环境变量，最后使用默认值
-    this.baseURL = baseURL || 
-      (typeof process !== 'undefined' && process.env && process.env.API_BASE_URL) ||
-      (typeof window !== 'undefined' && (window as any).__API_BASE_URL__) ||
-      'http://localhost:8080';
-    if (axiosInstance) {
-      // 使用传入的 axios 实例，设置 baseURL
-      this.axios = axiosInstance;
-      if (axiosInstance.defaults) {
-        axiosInstance.defaults.baseURL = this.baseURL;
-      }
-    } else {
-      // 尝试动态导入 axios
-      try {
-        // 优先尝试 ES 模块导入
-        this.axios = eval('import')('axios').then(axios => {
-          const axiosInstance = axios.default || axios;
-          axiosInstance.defaults.baseURL = this.baseURL;
-          return axiosInstance;
-        });
-      } catch (error) {
-        try {
-          // 回退到 CommonJS require
-          const axios = eval('require')('axios');
-          axios.defaults.baseURL = this.baseURL;
-          this.axios = axios;
-        } catch (requireError) {
-          throw new Error('Axios is not installed. Please run: npm install axios');
-        }
-      }
-    }
-  }
 {{- range .Functions }}
   /**
    * {{ .Name }}
@@ -112,7 +67,7 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
 {{- $pathValue := index ($arg.Annotations.Get "api.path") 0 }}
 {{- if $pathValue }}
       if ({{ GetPropertyName $arg.Name }} !== undefined && {{ GetPropertyName $arg.Name }} !== null) {
-        url = url.replace(String('{'+'{{ $pathValue }}'+'}'), String({{ GetPropertyName $arg.Name }}));
+        url = url.replace(String(':'+'{{ $pathValue }}'), String({{ GetPropertyName $arg.Name }}));
       }
 {{- end }}
 {{- end }}
@@ -125,8 +80,8 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
 {{- if index $fieldAnnotations "api.path" }}
 {{- $pathValue := index $fieldAnnotations "api.path" }}
 {{- if $pathValue }}
-      if ({{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== null) {
-        url = url.replace(String('{'+'{{ $pathValue }}'+'}'), String({{ GetPropertyName $arg.Name }}.{{ $fieldName }}));
+      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
+        url = url.replace(String(':'+'{{ $pathValue }}'), String({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }}));
       }
 {{- end }}
 {{- end }}
@@ -162,8 +117,8 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
 {{- if index $fieldAnnotations "api.query" }}
 {{- $queryValue := index $fieldAnnotations "api.query" }}
 {{- if $queryValue }}
-      if ({{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== null) {
-        queryParams['{{ $queryValue }}'] = {{ GetPropertyName $arg.Name }}.{{ $fieldName }};
+      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
+        queryParams['{{ $queryValue }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
       }
 {{- end }}
 {{- end }}
@@ -191,8 +146,8 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
       {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
       {{- if not (index $fieldAnnotations "api.query") }}
       {{- if not (index $fieldAnnotations "api.path") }}
-      if ({{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== null) {
-        bodyParam['{{ $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ $fieldName }};
+      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
+        bodyParam['{{ GetPropertyName $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
       }
       {{- end }}
       {{- end }}
@@ -209,8 +164,8 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
       {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
       {{- if not (index $fieldAnnotations "api.query") }}
       
-      if ({{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== null) {
-        queryParams['{{ $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ $fieldName }};
+      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
+        queryParams['{{ GetPropertyName $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
       }
       {{- end }}
       {{- end }}
@@ -236,8 +191,8 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
       {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
       {{- if not (index $fieldAnnotations "api.query") }}
       {{- if not (index $fieldAnnotations "api.path") }}
-      if ({{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ $fieldName }} !== null) {
-        bodyParam['{{ $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ $fieldName }};
+      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
+        bodyParam['{{ GetPropertyName $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
       }
       {{- end }}
       {{- end }}
@@ -253,16 +208,14 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
       {{- end }}
       
       
-      const axiosInstance = await Promise.resolve(this.axios);
-      
       {{- if eq $apiMethod "GET" }}
-      let response = await axiosInstance.get(url, { params: queryParams });
+      let response = await axios.get(url, { params: queryParams });
       {{- else if eq $apiMethod "POST" }}
-      let response = await axiosInstance.post(url, bodyParam, { params: queryParams });
+      let response = await axios.post(url, bodyParam, { params: queryParams });
       {{- else if eq $apiMethod "PUT" }}
-      let response = await axiosInstance.put(url, bodyParam, { params: queryParams });
+      let response = await axios.put(url, bodyParam, { params: queryParams });
       {{- else if eq $apiMethod "DELETE" }}
-      let response = await axiosInstance.delete(url, { params: queryParams });
+      let response = await axios.delete(url, { params: queryParams });
       {{- end }}
       
       if (response.status >= 200 && response.status < 300) {

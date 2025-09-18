@@ -28,6 +28,12 @@ basic: install
 	@../../thriftgo.exe -g typescript -r -o gen-basic test_basic.thrift
 	@echo "基本测试代码生成完成，输出目录: gen-basic/"
 
+merchants: install
+	@echo "生成商户测试的 TypeScript 代码..."
+	@mkdir -p gen-merchants
+	@cd ../.. && go run main.go -g typescript -r -o test/typescript/gen-merchants d:/huidu/xym_idl/idl/http/http_admin/merchant.thrift
+	@echo "商户测试代码生成完成，输出目录: gen-merchants/"
+
 # 生成高级测试的 TypeScript 代码
 advanced: install
 	@echo "生成高级测试的 TypeScript 代码..."

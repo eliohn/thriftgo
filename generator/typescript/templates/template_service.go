@@ -22,5 +22,15 @@ export interface {{ GetInterfaceName .Name }} {
   {{ GetPropertyName .Name }}{{ GetMethodSignature . }};
 {{- end }}
 }
+
+/**
+ * {{ GetInterfaceName .Name }} 异步接口
+ * 用于 Axios 客户端等异步实现
+ */
+export interface Async{{ GetInterfaceName .Name }} {
+{{- range .Functions }}
+  {{ GetPropertyName .Name }}{{ GetAsyncMethodSignature . }};
+{{- end }}
+}
 {{- end -}}
 `
