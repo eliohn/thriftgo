@@ -21,21 +21,11 @@ const ServiceTemplate = `
 {{- if $serviceComment }}
 {{ $serviceComment }}
 {{- end }}
-export interface {{ GetInterfaceName .Name }} {
-{{- range .Functions }}
-{{- $functionComment := GetFunctionComment . }}
-{{- if $functionComment }}
-{{ $functionComment }}
-{{- end }}
-  {{ GetPropertyName .Name }}{{ GetMethodSignature . }};
-{{- end }}
-}
-
 /**
- * {{ GetInterfaceName .Name }} 异步接口
+ * I{{ GetInterfaceName .Name }} 异步接口
  * 用于 Axios 客户端等异步实现
  */
-export interface Async{{ GetInterfaceName .Name }} {
+export interface I{{ GetInterfaceName .Name }} {
 {{- range .Functions }}
 {{- $functionComment := GetFunctionComment . }}
 {{- if $functionComment }}

@@ -27,7 +27,7 @@ const SimpleServiceImplementationTemplate = `
 
 {{- range .Services }}
 // 导入服务接口
-import { {{ GetInterfaceName .Name }}, Async{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
+import { I{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
 import axios from 'axios';
 
 /**
@@ -35,7 +35,7 @@ import axios from 'axios';
  * 根据 Thrift 服务定义和 API 注解自动生成的 HTTP 请求实现
  * 支持使用项目中已实例化的 axios 实例
  */
-export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInterfaceName .Name }} {
+export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName .Name }} {
 {{- range .Functions }}
   /**
    * {{ .Name }}
@@ -139,7 +139,7 @@ export class {{ GetInterfaceName .Name }}AxiosClient implements Async{{ GetInter
       {{- end }}
 
       {{- if or (eq $apiMethod "POST") (eq $apiMethod "PUT") }}
-      let bodyParam = {};
+      let bodyParam : any = {};
       
       {{- range $argIndex, $arg := .Arguments }}
       {{- if and (IsStructField $arg) ($arg.Annotations.Get "api.body") }}

@@ -32,8 +32,8 @@ export { {{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
 {{- end }}
 
 {{- range .Services }}
-export { {{ GetInterfaceName .Name }},  Async{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
-export { {{ GetInterfaceName .Name }}AxiosClient } from './{{ ToLower .Name }}client';
+export { I{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
+export { {{ GetInterfaceName .Name }}Client } from './{{ ToLower .Name }}client';
 {{- end }}
 {{- end -}}
 `
