@@ -17,17 +17,29 @@ package templates
 // 结构体模板
 const StructTemplate = `
 {{- define "struct" -}}
+{{- $structComment := GetStructComment . }}
+{{- if $structComment }}
+{{ $structComment }}
+{{- end }}
 export interface {{ GetInterfaceName .Name }} {
 {{- $expandedFields := GetExpandedFields . }}
 {{- $expandedFieldNames := GetExpandedFieldNames . }}
 {{- range .Fields }}
 {{- $isExpanded := index $expandedFieldNames .Name }}
 {{- if not $isExpanded }}
+{{- $fieldComment := GetFieldComment . }}
+{{- if $fieldComment }}
+{{ $fieldComment }}
+{{- end }}
   {{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
 {{- end }}
 {{- end }}
 {{- if $expandedFields }}
 {{- range $expandedFields }}
+{{- $fieldComment := GetFieldComment . }}
+{{- if $fieldComment }}
+{{ $fieldComment }}
+{{- end }}
   {{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
 {{- end }}
 {{- end }}

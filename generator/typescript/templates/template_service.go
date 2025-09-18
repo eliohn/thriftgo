@@ -17,8 +17,16 @@ package templates
 // 服务模板
 const ServiceTemplate = `
 {{- define "service" -}}
+{{- $serviceComment := GetServiceComment . }}
+{{- if $serviceComment }}
+{{ $serviceComment }}
+{{- end }}
 export interface {{ GetInterfaceName .Name }} {
 {{- range .Functions }}
+{{- $functionComment := GetFunctionComment . }}
+{{- if $functionComment }}
+{{ $functionComment }}
+{{- end }}
   {{ GetPropertyName .Name }}{{ GetMethodSignature . }};
 {{- end }}
 }
@@ -29,6 +37,10 @@ export interface {{ GetInterfaceName .Name }} {
  */
 export interface Async{{ GetInterfaceName .Name }} {
 {{- range .Functions }}
+{{- $functionComment := GetFunctionComment . }}
+{{- if $functionComment }}
+{{ $functionComment }}
+{{- end }}
   {{ GetPropertyName .Name }}{{ GetAsyncMethodSignature . }};
 {{- end }}
 }

@@ -254,7 +254,6 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 				if s.isTypeDefinedInCurrentFile(typeName) {
 					return
 				}
-
 				// 映射模块名到实际的 namespace
 				actualModule := s.mapModuleToNamespace(module, ast)
 
@@ -511,6 +510,12 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"IsStructField":                        IsStructField,
 		"GetStructFieldAnnotations":            GetStructFieldAnnotations,
 		"GetStructFieldAnnotationsForTemplate": GetStructFieldAnnotationsForTemplate,
+		"GetStructComment":                     GetStructComment,
+		"GetFieldComment":                      GetFieldComment,
+		"GetEnumComment":                       GetEnumComment,
+		"GetEnumValueComment":                  GetEnumValueComment,
+		"GetServiceComment":                    GetServiceComment,
+		"GetFunctionComment":                   GetFunctionComment,
 		"GetPackageName":                       func(s *Scope) string { return s.GetPackageName() },
 		"GetFileName":                          func(s *Scope) string { return s.GetFileName() },
 		"GetSourceThriftFile":                  func(s *Scope) string { return s.GetSourceThriftFile() },
@@ -573,22 +578,30 @@ func (s *Scope) mapModuleToNamespace(module string, ast *parser.Thrift) string {
 			}
 		}
 	}
+
 	// 如果没有找到直接包含的文件，递归查找间接包含的文件
 	return s.findModuleNamespaceRecursively(module, ast, make(map[string]bool))
 }
 
 // findModuleNamespaceRecursively 递归查找模块的 namespace
 func (s *Scope) findModuleNamespaceRecursively(module string, ast *parser.Thrift, visited map[string]bool) string {
+	// 防止循环引用
 	if visited[ast.Filename] {
 		return module
 	}
 	visited[ast.Filename] = true
+
+	// 遍历所有包含的文件
 	for _, include := range ast.Includes {
 		if include.Reference == nil {
 			continue
 		}
+
+		// 提取文件名（去掉 .thrift 扩展名）
 		fileName := strings.TrimSuffix(filepath.Base(include.Path), ".thrift")
+
 		if fileName == module {
+			// 查找被引用文件的 TypeScript namespace
 			for _, ns := range include.Reference.Namespaces {
 				if ns.Language == "ts" || ns.Language == "typescript" {
 					// 将点号转换为路径分隔符
@@ -606,6 +619,8 @@ func (s *Scope) findModuleNamespaceRecursively(module string, ast *parser.Thrift
 			return result
 		}
 	}
+
+	// 如果没有找到对应的 include，返回原始模块名
 	return module
 }
 

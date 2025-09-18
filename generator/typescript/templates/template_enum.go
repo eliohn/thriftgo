@@ -17,8 +17,16 @@ package templates
 // 枚举模板
 const EnumTemplate = `
 {{- define "enum" -}}
+{{- $enumComment := GetEnumComment . }}
+{{- if $enumComment }}
+{{ $enumComment }}
+{{- end }}
 export enum {{ GetInterfaceName .Name }} {
 {{- range .Values }}
+{{- $valueComment := GetEnumValueComment . }}
+{{- if $valueComment }}
+{{ $valueComment }}
+{{- end }}
   {{ GetEnumValueName .Name }} = {{ .Value }},
 {{- end }}
 }
