@@ -22,5 +22,24 @@ unknown:
 cases:
 	cd cases_and_options && ./run_test.sh
 
-clean:
+clean2:
 	@find . -name "gen-*" -type d | while read d; do echo rm -r $$d; rm -r $$d; done
+
+# 清理生成的文件
+clean:
+	@echo "清理生成的 gen 文件..."
+	@rm -rf gen-*
+	@echo "清理完成"
+
+# 安装 thriftgo
+install:
+	cd ../.. && make build_tool
+
+# 生成基本测试的 Golang 代码
+basic1: install
+	@echo "生成基本测试的 Golang 代码..."
+	@mkdir -p gen-basic
+	@../../thriftgo.exe -g go -r -o gen-basic test_basic.thrift
+	@echo "基本测试代码生成完成，输出目录: gen-basic/"
+
+

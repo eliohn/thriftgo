@@ -557,7 +557,8 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						// Create a new field with adjusted ID to avoid conflicts
 						adjustedField := *structField
 						adjustedField.ID = structField.ID + (f.ID * 1000)
-						expandedFieldName := st.scope.Add(common.UpperFirstRune(string(Name(structField.Name))), structField.Name)
+						expandedFieldName := s.identify(cu, structField.Name)
+						expandedFieldName = st.scope.Add(expandedFieldName, structField.Name)
 						expandedField := &Field{
 							Field:               &adjustedField,
 							name:                Name(expandedFieldName),
