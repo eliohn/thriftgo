@@ -23,7 +23,7 @@ var Enum = `
 {{.ReservedComments}}
 {{- end}}
 
-{{- $enumType := "64"}}
+{{- $enumType := "8"}}
 {{- range .Annotations}}
 {{- if eq .Key "go.type"}}
 {{- $typeValue := index .Values 0}}
