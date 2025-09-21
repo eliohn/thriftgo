@@ -19,8 +19,27 @@ var Enum = `
 {{define "Enum"}}
 {{- $EnumType := .GoName}}
 {{InsertionPoint "enum" .Name}}
-{{- if and Features.ReserveComments .ReservedComments}}{{.ReservedComments}}{{end}}
-type {{$EnumType}} int{{if Features.EnumAsINT32}}32{{else}}64{{end}}
+{{- if and Features.ReserveComments .ReservedComments}}
+{{.ReservedComments}}
+{{- end}}
+
+{{- $enumType := "64"}}
+{{- range .Annotations}}
+{{- if eq .Key "go.type"}}
+{{- $typeValue := index .Values 0}}
+{{- if eq $typeValue "int8"}}
+{{- $enumType = "8"}}
+{{- else if eq $typeValue "int16"}}
+{{- $enumType = "16"}}
+{{- else if eq $typeValue "int32"}}
+{{- $enumType = "32"}}
+{{- else if eq $typeValue "int64"}}
+{{- $enumType = "64"}}
+{{- end}}
+{{- end}}
+{{- end}}
+
+type {{$EnumType}} int{{if eq $enumType "8"}}8{{else if eq $enumType "16"}}16{{else if eq $enumType "32"}}32{{else}}64{{end}}
 
 const (
 	{{- range .Values}}
@@ -53,6 +72,11 @@ func {{$EnumType}}FromString(s string) ({{$EnumType}}, error) {
 
 func {{$EnumType}}Ptr(v {{$EnumType}} ) *{{$EnumType}}  { return &v }
 
+// 获取枚举的原始值
+func (p {{$EnumType}}) ToInt() {{if eq $enumType "8"}}int8{{else if eq $enumType "16"}}int16{{else if eq $enumType "32"}}int32{{else}}int64{{end}} {
+	return {{if eq $enumType "8"}}int8(p){{else if eq $enumType "16"}}int16(p){{else if eq $enumType "32"}}int32(p){{else}}int64(p){{end}}
+}
+
 {{- if or Features.MarshalEnumToText Features.MarshalEnum}}
 
 func (p {{$EnumType}}) MarshalText() ([]byte, error) {
@@ -75,10 +99,40 @@ func (p *{{$EnumType}}) UnmarshalText(text []byte) error {
 
 {{- if Features.ScanValueForEnum}}
 {{- UseStdLibrary "sql" "driver"}}
+{{- $enumType := "64"}}
+{{- range .Annotations}}
+{{- if eq .Key "go.type"}}
+{{- $typeValue := index .Values 0}}
+{{- if eq $typeValue "int8"}}
+{{- $enumType = "8"}}
+{{- else if eq $typeValue "int16"}}
+{{- $enumType = "16"}}
+{{- else if eq $typeValue "int32"}}
+{{- $enumType = "32"}}
+{{- else if eq $typeValue "int64"}}
+{{- $enumType = "64"}}
+{{- end}}
+{{- end}}
+{{- end}}
+
 func (p *{{$EnumType}}) Scan(value interface{}) (err error) {
-	var result sql.NullInt{{if Features.EnumAsINT32}}32{{else}}64{{end}}
+	{{- if eq $enumType "8"}}
+	var result sql.NullInt64
 	err = result.Scan(value)
-	*p = {{$EnumType}}(result.Int{{if Features.EnumAsINT32}}32{{else}}64{{end}})
+	*p = {{$EnumType}}(int8(result.Int64))
+	{{- else if eq $enumType "16"}}
+	var result sql.NullInt64
+	err = result.Scan(value)
+	*p = {{$EnumType}}(int16(result.Int64))
+	{{- else if eq $enumType "32"}}
+	var result sql.NullInt32
+	err = result.Scan(value)
+	*p = {{$EnumType}}(result.Int32)
+	{{- else}}
+	var result sql.NullInt64
+	err = result.Scan(value)
+	*p = {{$EnumType}}(result.Int64)
+	{{- end}}
 	return
 }
 
@@ -86,7 +140,15 @@ func (p *{{$EnumType}}) Value() (driver.Value, error) {
 	if p == nil {
 		return nil, nil
 	}
-	return int{{if Features.EnumAsINT32}}32{{else}}64{{end}}(*p), nil
+	{{- if eq $enumType "8"}}
+	return int64(*p), nil
+	{{- else if eq $enumType "16"}}
+	return int64(*p), nil
+	{{- else if eq $enumType "32"}}
+	return int32(*p), nil
+	{{- else}}
+	return int64(*p), nil
+	{{- end}}
 }
 {{- end}}{{/* if .Features.ScanValueForEnum */}}
 
