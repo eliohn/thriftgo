@@ -21,6 +21,7 @@ import (
 	"github.com/cloudwego/thriftgo/generator"
 	"github.com/cloudwego/thriftgo/generator/fastgo"
 	"github.com/cloudwego/thriftgo/generator/golang"
+	"github.com/cloudwego/thriftgo/generator/openapi"
 	"github.com/cloudwego/thriftgo/generator/typescript"
 	"github.com/cloudwego/thriftgo/parser"
 	"github.com/cloudwego/thriftgo/plugin"
@@ -32,6 +33,7 @@ func init() {
 	_ = g.RegisterBackend(new(golang.GoBackend))
 	_ = g.RegisterBackend(new(fastgo.FastGoBackend))
 	_ = g.RegisterBackend(new(typescript.TypeScriptBackend))
+	_ = g.RegisterBackend(new(openapi.OpenAPIBackend))
 }
 
 var (
