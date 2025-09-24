@@ -235,17 +235,8 @@ func GetEnumValueName(name string) string {
 
 // GetPropertyName 获取属性名称
 func GetPropertyName(name string) string {
-	// 将 snake_case 转换为 camelCase
-	parts := strings.Split(name, "_")
-	if len(parts) == 1 {
-		return parts[0]
-	}
-
-	result := parts[0]
-	for _, part := range parts[1:] {
-		result += strings.Title(part)
-	}
-	return result
+	// 默认使用 JSON 名称格式，如果与字段名相同则使用原字段名
+	return name
 }
 
 // GetConstantName 获取常量名称
