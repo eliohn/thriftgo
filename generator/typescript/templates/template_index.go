@@ -28,11 +28,11 @@ export { {{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
 {{- end }}
 
 {{- range .Structs }}
-export { {{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
+export type { {{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
 {{- end }}
 
 {{- range .Services }}
-export { I{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
+export type { I{{ GetInterfaceName .Name }} } from './{{ ToLower .Name }}';
 export { {{ GetInterfaceName .Name }}Client } from './{{ ToLower .Name }}client';
 {{- end }}
 {{- end -}}

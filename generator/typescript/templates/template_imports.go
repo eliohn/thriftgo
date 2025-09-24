@@ -18,7 +18,7 @@ package templates
 const ImportsTemplate = `
 {{- define "imports" -}}
 {{- range .Imports }}
-import { {{ range $index, $type := .Types }}{{ if $index }}, {{ end }}{{ $type }}{{ end }} } from '{{ .Path }}';
+import type { {{ range $index, $type := .Types }}{{ if $index }}, {{ end }}{{ $type }}{{ end }} } from '{{ .Path }}';
 {{- end }}
 {{- end -}}
 `
