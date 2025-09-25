@@ -239,6 +239,83 @@ func GetPropertyName(name string) string {
 	return name
 }
 
+// GetPropertyNameWithStyle 根据命名风格获取属性名称
+func GetPropertyNameWithStyle(name string, features *Features) string {
+	if features.SnakeStylePropertyName {
+		return snakify(name)
+	} else if features.LowerCamelCasePropertyName {
+		return lowerCamelCase(name)
+	}
+	// 默认使用原始名称
+	return name
+}
+
+// snakify 将字符串转换为 snake_case
+func snakify(id string) string {
+	if id == "" {
+		return id
+	}
+	
+	var result []rune
+	for i, r := range id {
+		if i > 0 && isUpper(r) {
+			result = append(result, '_')
+		}
+		result = append(result, toLower(r))
+	}
+	return string(result)
+}
+
+// lowerCamelCase 将字符串转换为 lowerCamelCase
+func lowerCamelCase(id string) string {
+	if id == "" {
+		return id
+	}
+	
+	// 转换为 camelCase
+	var result []rune
+	nextUpper := false
+	for i, r := range id {
+		if i == 0 {
+			result = append(result, toLower(r))
+		} else if r == '_' {
+			nextUpper = true
+		} else if nextUpper {
+			result = append(result, toUpper(r))
+			nextUpper = false
+		} else {
+			result = append(result, r)
+		}
+	}
+	return string(result)
+}
+
+// isUpper 检查字符是否为大写
+func isUpper(r rune) bool {
+	return r >= 'A' && r <= 'Z'
+}
+
+// isLower 检查字符是否为小写
+func isLower(r rune) bool {
+	return r >= 'a' && r <= 'z'
+}
+
+// toUpper 将字符转换为大写
+func toUpper(r rune) rune {
+	if r >= 'a' && r <= 'z' {
+		return r - 32
+	}
+	return r
+}
+
+// toLower 将字符转换为小写
+func toLower(r rune) rune {
+	if r >= 'A' && r <= 'Z' {
+		return r + 32
+	}
+	return r
+}
+
 // GetConstantName 获取常量名称
 func GetConstantName(name string) string {
 	// 将 snake_case 转换为 UPPER_CASE

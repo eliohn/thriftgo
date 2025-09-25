@@ -53,7 +53,7 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
    * API: DELETE {{ .Annotations.Get "api.delete" }}
 {{- end }}
 {{- range .Arguments }}
-   * @param {{ GetPropertyName .Name }} {{ .Name }}
+   * @param {{ GetPropertyNameWithStyle .Name }} {{ .Name }}
 {{- end }}
 {{- if .FunctionType }}
    * @returns {{ GetTypeScriptType .FunctionType }}
@@ -61,7 +61,7 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
    * @returns void
 {{- end }}
    */
-  async {{ GetPropertyName .Name }}({{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyName .Name }}{{ if and (IsOptional .) (not (IsStructField .)) }}?{{ end }}: {{ GetFieldType . }}{{ end }}): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
+  async {{ GetPropertyNameWithStyle .Name }}({{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyNameWithStyle .Name }}{{ if and (IsOptional .) (not (IsStructField .)) }}?{{ end }}: {{ GetFieldType . }}{{ end }}): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
     try {
       let url = '{{ if .Annotations.Get "api.get" }}{{ index (.Annotations.Get "api.get") 0 }}{{ else if .Annotations.Get "api.post" }}{{ index (.Annotations.Get "api.post") 0 }}{{ else if .Annotations.Get "api.put" }}{{ index (.Annotations.Get "api.put") 0 }}{{ else if .Annotations.Get "api.delete" }}{{ index (.Annotations.Get "api.delete") 0 }}{{ end }}';
 {{- range $index, $arg := .Arguments }}
@@ -71,8 +71,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 {{- if $arg.Annotations.Get "api.path" }}
 {{- $pathValue := index ($arg.Annotations.Get "api.path") 0 }}
 {{- if $pathValue }}
-      if ({{ GetPropertyName $arg.Name }} !== undefined && {{ GetPropertyName $arg.Name }} !== null) {
-        url = url.replace(String(':'+'{{ $pathValue }}'), String({{ GetPropertyName $arg.Name }}));
+      if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null) {
+        url = url.replace(String(':'+'{{ $pathValue }}'), String({{ GetPropertyNameWithStyle $arg.Name }}));
       }
 {{- end }}
 {{- end }}
@@ -85,8 +85,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 {{- if index $fieldAnnotations "api.path" }}
 {{- $pathValue := index $fieldAnnotations "api.path" }}
 {{- if $pathValue }}
-      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
-        url = url.replace(String(':'+'{{ $pathValue }}'), String({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }}));
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
+        url = url.replace(String(':'+'{{ $pathValue }}'), String({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }}));
       }
 {{- end }}
 {{- end }}
@@ -96,8 +96,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 
 {{- range $argIndex, $arg := .Arguments }}
       {{- if not (IsStructField $arg) }}
-      if (url.includes('{'+'{{ GetPropertyName $arg.Name }}'+'}')) {
-        url = url.replace(String('{'+'{{ GetPropertyName $arg.Name }}'+'}'), String({{ GetPropertyName $arg.Name }}));
+      if (url.includes('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}')) {
+        url = url.replace(String('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}'), String({{ GetPropertyNameWithStyle $arg.Name }}));
       }
       {{- end }}
 {{- end }}
@@ -108,8 +108,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 {{- if $arg.Annotations.Get "api.query" }}
 {{- $queryValue := index ($arg.Annotations.Get "api.query") 0 }}
 {{- if $queryValue }}
-      if ({{ GetPropertyName $arg.Name }} !== undefined && {{ GetPropertyName $arg.Name }} !== null) {
-        queryParams['{{ $queryValue }}'] = {{ GetPropertyName $arg.Name }};
+      if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null) {
+        queryParams['{{ $queryValue }}'] = {{ GetPropertyNameWithStyle $arg.Name }};
       }
 {{- end }}
 {{- end }}
@@ -122,8 +122,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 {{- if index $fieldAnnotations "api.query" }}
 {{- $queryValue := index $fieldAnnotations "api.query" }}
 {{- if $queryValue }}
-      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
-        queryParams['{{ $queryValue }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
+        queryParams['{{ $queryValue }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
       }
 {{- end }}
 {{- end }}
@@ -151,8 +151,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
       {{- if not (index $fieldAnnotations "api.query") }}
       {{- if not (index $fieldAnnotations "api.path") }}
-      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
-        bodyParam['{{ GetPropertyName $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
+        bodyParam['{{ GetPropertyNameWithStyle $fieldName }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
       }
       {{- end }}
       {{- end }}
@@ -169,14 +169,14 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
       {{- if not (index $fieldAnnotations "api.query") }}
       
-      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
-        queryParams['{{ GetPropertyName $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
+        queryParams['{{ GetPropertyNameWithStyle $fieldName }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
       }
       {{- end }}
       {{- end }}
       {{- else }}
-      if ({{ GetPropertyName $arg.Name }} !== undefined && {{ GetPropertyName $arg.Name }} !== null && !url.includes('{'+'{{ GetPropertyName $arg.Name }}'+'}')) {
-        queryParams['{{ GetPropertyName $arg.Name }}'] = {{ GetPropertyName $arg.Name }};
+      if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null && !url.includes('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}')) {
+        queryParams['{{ GetPropertyNameWithStyle $arg.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }};
       }
       {{- end }}
       {{- end }}
@@ -196,15 +196,15 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
       {{- if not (index $fieldAnnotations "api.query") }}
       {{- if not (index $fieldAnnotations "api.path") }}
-      if ({{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== undefined && {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }} !== null) {
-        bodyParam['{{ GetPropertyName $fieldName }}'] = {{ GetPropertyName $arg.Name }}.{{ GetPropertyName $fieldName }};
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
+        bodyParam['{{ GetPropertyNameWithStyle $fieldName }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
       }
       {{- end }}
       {{- end }}
       {{- end }}
       {{- else }}
-      if ({{ GetPropertyName $arg.Name }} !== undefined && {{ GetPropertyName $arg.Name }} !== null && !url.includes('{'+'{{ GetPropertyName $arg.Name }}'+'}')) {
-        bodyParam['{{ GetPropertyName $arg.Name }}'] = {{ GetPropertyName $arg.Name }};
+      if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null && !url.includes('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}')) {
+        bodyParam['{{ GetPropertyNameWithStyle $arg.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }};
       }
       {{- end }}
       {{- end }}

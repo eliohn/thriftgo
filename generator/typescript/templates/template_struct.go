@@ -31,7 +31,7 @@ export interface {{ GetInterfaceName .Name }} {
 {{- if $fieldComment }}
 {{ $fieldComment }}
 {{- end }}
-  {{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
+  {{ GetPropertyNameWithStyle .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
 {{- end }}
 {{- end }}
 {{- if $expandedFields }}
@@ -40,7 +40,7 @@ export interface {{ GetInterfaceName .Name }} {
 {{- if $fieldComment }}
 {{ $fieldComment }}
 {{- end }}
-  {{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
+  {{ GetPropertyNameWithStyle .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
 {{- end }}
 {{- end }}
 }

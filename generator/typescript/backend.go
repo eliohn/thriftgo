@@ -100,8 +100,8 @@ func (t *TypeScriptBackend) prepareUtilities() {
 	}
 
 	t.utils = NewCodeUtils(t.log)
-	// 暂时跳过选项处理
-	// t.err = t.utils.HandleOptions(t.req.GeneratorParameters)
+	// 处理生成选项
+	t.err = t.utils.HandleOptions(t.req.GeneratorParameters)
 	if t.err != nil {
 		return
 	}

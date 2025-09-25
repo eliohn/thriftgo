@@ -33,7 +33,16 @@ merchants: install clean
 	@mkdir -p gen-merchants
 	@../../thriftgo.exe -g typescript -r -o gen-merchants d:/huidu/xym_idl/idl/http/http_admin/merchant.thrift
 	@echo "商户测试代码生成完成，输出目录: gen-merchants/"
-
+merchants1: install clean
+	@echo "生成商户测试的 TypeScript 代码..."
+	@mkdir -p gen-merchants
+	@../../thriftgo.exe -g typescript:snake_style_property_name=true -r -o gen-merchants d:/huidu/xym_idl/idl/http/http_admin/merchant.thrift
+	@echo "商户测试代码生成完成，输出目录: gen-merchants/"
+merchants2: install clean
+	@echo "生成商户测试的 TypeScript 代码..."
+	@mkdir -p gen-merchants
+	@../../thriftgo.exe -g typescript:lower_camel_case_property_name=true -r -o gen-merchants d:/huidu/xym_idl/idl/http/http_admin/merchant.thrift
+	@echo "商户测试代码生成完成，输出目录: gen-merchants/"
 # 生成高级测试的 TypeScript 代码
 advanced: install
 	@echo "生成高级测试的 TypeScript 代码..."

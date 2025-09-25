@@ -31,7 +31,7 @@ export interface I{{ GetInterfaceName .Name }} {
 {{- if $functionComment }}
 {{ $functionComment }}
 {{- end }}
-  {{ GetPropertyName .Name }}{{ GetAsyncMethodSignature . }};
+  {{ GetPropertyNameWithStyle .Name }}{{ GetAsyncMethodSignature . }};
 {{- end }}
 }
 {{- end -}}

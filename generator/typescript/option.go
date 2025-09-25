@@ -45,4 +45,12 @@ var allParams = []param{
 		name: "output_dir",
 		desc: "输出目录",
 	},
+	{
+		name: "snake_style_property_name",
+		desc: "使用 snake_case 命名属性",
+	},
+	{
+		name: "lower_camel_case_property_name",
+		desc: "使用 lowerCamelCase 命名属性（默认）",
+	},
 }

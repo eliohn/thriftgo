@@ -20,7 +20,6 @@ import (
 
 	"github.com/cloudwego/thriftgo/generator/backend"
 	"github.com/cloudwego/thriftgo/parser"
-	"github.com/cloudwego/thriftgo/plugin"
 )
 
 // Scope 表示 TypeScript 代码生成的作用域
@@ -428,17 +427,22 @@ type Features struct {
 	GenerateClasses    bool
 	UseStrictMode      bool
 	UseES6Modules      bool
+	// 命名风格选项
+	SnakeStylePropertyName     bool // 使用 snake_case 命名属性
+	LowerCamelCasePropertyName bool // 使用 lowerCamelCase 命名属性（默认）
 }
 
 // NewCodeUtils 创建新的代码工具
 func NewCodeUtils(log backend.LogFunc) *CodeUtils {
 	return &CodeUtils{
 		features: &Features{
-			SkipEmpty:          false,
-			GenerateInterfaces: true,
-			GenerateClasses:    false,
-			UseStrictMode:      true,
-			UseES6Modules:      true,
+			SkipEmpty:                  false,
+			GenerateInterfaces:         true,
+			GenerateClasses:            false,
+			UseStrictMode:              true,
+			UseES6Modules:              true,
+			SnakeStylePropertyName:     false,
+			LowerCamelCasePropertyName: true, // 默认使用小驼峰命名
 		},
 		log: log,
 	}
@@ -460,33 +464,57 @@ func (u *CodeUtils) GetRootScope() *Scope {
 }
 
 // HandleOptions 处理生成选项
-func (u *CodeUtils) HandleOptions(options []plugin.Option) error {
-	// 这里可以处理 TypeScript 特定的选项
-	// 目前使用默认配置
+func (u *CodeUtils) HandleOptions(args []string) error {
+	var name, value string
+	for _, a := range args {
+		parts := strings.SplitN(a, "=", 2)
+		switch len(parts) {
+		case 0:
+			continue
+		case 1:
+			name, value = parts[0], ""
+		case 2:
+			name, value = parts[0], parts[1]
+		}
+
+		switch name {
+		case "snake_style_property_name":
+			if value == "true" {
+				u.features.SnakeStylePropertyName = true
+				u.features.LowerCamelCasePropertyName = false
+			}
+		case "lower_camel_case_property_name":
+			if value == "true" {
+				u.features.LowerCamelCasePropertyName = true
+				u.features.SnakeStylePropertyName = false
+			}
+		}
+	}
 	return nil
 }
 
 // BuildFuncMap 构建模板函数映射
 func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 	return map[string]interface{}{
-		"GetTypeScriptType":       GetTypeScriptType,
-		"GetFieldType":            GetFieldType,
-		"GetMethodSignature":      GetMethodSignature,
-		"GetAsyncMethodSignature": GetAsyncMethodSignature,
-		"GetInterfaceName":        GetInterfaceName,
-		"GetClassName":            GetClassName,
-		"GetEnumName":             GetEnumName,
-		"GetEnumValueName":        GetEnumValueName,
-		"GetPropertyName":         GetPropertyName,
-		"GetConstantName":         GetConstantName,
-		"IsOptional":              IsOptional,
-		"GetDefaultValue":         GetDefaultValue,
-		"GetDefaultValueForType":  GetDefaultValueForType,
-		"GetConstantValue":        GetConstantValue,
-		"IsExpandField":           isExpandField,
-		"IsExpandableStruct":      isExpandableStruct,
-		"GetExpandedFields":       func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
-		"GetExpandedFieldNames":   func(structLike *parser.StructLike) map[string]bool { return u.getExpandedFieldNames(structLike) },
+		"GetTypeScriptType":        GetTypeScriptType,
+		"GetFieldType":             GetFieldType,
+		"GetMethodSignature":       GetMethodSignature,
+		"GetAsyncMethodSignature":  GetAsyncMethodSignature,
+		"GetInterfaceName":         GetInterfaceName,
+		"GetClassName":             GetClassName,
+		"GetEnumName":              GetEnumName,
+		"GetEnumValueName":         GetEnumValueName,
+		"GetPropertyName":          GetPropertyName,
+		"GetPropertyNameWithStyle": func(name string) string { return GetPropertyNameWithStyle(name, u.features) },
+		"GetConstantName":          GetConstantName,
+		"IsOptional":               IsOptional,
+		"GetDefaultValue":          GetDefaultValue,
+		"GetDefaultValueForType":   GetDefaultValueForType,
+		"GetConstantValue":         GetConstantValue,
+		"IsExpandField":            isExpandField,
+		"IsExpandableStruct":       isExpandableStruct,
+		"GetExpandedFields":        func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
+		"GetExpandedFieldNames":    func(structLike *parser.StructLike) map[string]bool { return u.getExpandedFieldNames(structLike) },
 		"IsFieldExpanded": func(field *parser.Field, expandedFields []*parser.Field) bool {
 			// 检查字段是否应该展开
 			shouldExpand := isExpandField(field)

@@ -19,7 +19,7 @@ const ExceptionTemplate = `
 {{- define "exception" -}}
 export interface {{ GetInterfaceName .Name }} {
 {{- range .Fields }}
-  {{ GetPropertyName .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
+  {{ GetPropertyNameWithStyle .Name }}{{ if IsOptional . }}?{{ end }}: {{ GetFieldType . }};
 {{- end }}
 }
 {{- end -}}
