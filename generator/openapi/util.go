@@ -39,16 +39,21 @@ type Features struct {
 	Version   string
 	Title     string
 	BasePath  string
+	// 命名风格选项
+	SnakeStylePropertyName     bool // 使用 snake_case 命名属性
+	LowerCamelCasePropertyName bool // 使用 lowerCamelCase 命名属性（默认）
 }
 
 // NewCodeUtils creates a new CodeUtils instance.
 func NewCodeUtils(log backend.LogFunc) *CodeUtils {
 	return &CodeUtils{
 		features: &Features{
-			SkipEmpty: false,
-			Version:   "3.0.0",
-			Title:     "Thrift API",
-			BasePath:  "/api",
+			SkipEmpty:                  false,
+			Version:                    "3.0.0",
+			Title:                      "Thrift API",
+			BasePath:                   "/api",
+			SnakeStylePropertyName:     false,
+			LowerCamelCasePropertyName: true, // 默认使用小驼峰命名
 		},
 		options: make(map[string]string),
 		log:     log,
@@ -94,6 +99,16 @@ func (u *CodeUtils) HandleOptions(args []string) error {
 			u.options["server_url"] = value
 		case "server_description":
 			u.options["server_description"] = value
+		case "snake_style_property_name":
+			if value == "true" {
+				u.features.SnakeStylePropertyName = true
+				u.features.LowerCamelCasePropertyName = false
+			}
+		case "lower_camel_case_property_name":
+			if value == "true" {
+				u.features.LowerCamelCasePropertyName = true
+				u.features.SnakeStylePropertyName = false
+			}
 		}
 		u.options[name] = value
 	}
@@ -116,6 +131,14 @@ func (u *CodeUtils) CombineOutputPath(outputPath string, ast *parser.Thrift) str
 	if outputPath == "" {
 		return "."
 	}
+
+	// 检查是否有 TypeScript namespace
+	tsNamespace := u.getTypeScriptNamespace(ast)
+	if tsNamespace != "" {
+		// 使用 TypeScript namespace 作为子目录
+		return filepath.Join(outputPath, tsNamespace)
+	}
+
 	return outputPath
 }
 
@@ -132,25 +155,26 @@ func (u *CodeUtils) SetAST(ast *parser.Thrift) {
 // BuildFuncMap creates a template function map for OpenAPI generation.
 func (u *CodeUtils) BuildFuncMap() template.FuncMap {
 	return template.FuncMap{
-		"ToOpenAPIType":     u.ToOpenAPIType,
-		"ToOpenAPIFormat":   u.ToOpenAPIFormat,
-		"ToOpenAPIMethod":   u.ToOpenAPIMethod,
-		"ToOpenAPIPath":     u.ToOpenAPIPath,
-		"GetSchemaName":     u.GetSchemaName,
-		"GetServiceName":    u.GetServiceName,
-		"GetOperationId":    u.GetOperationId,
-		"GetDescription":    u.GetDescription,
-		"GetExample":        u.GetExample,
-		"GetDefaultValue":   u.GetDefaultValue,
-		"IsRequired":        u.IsRequired,
-		"GetEnumValues":     u.GetEnumValues,
-		"GetStructFields":   u.GetStructFields,
-		"GetServiceMethods": u.GetServiceMethods,
-		"IsExpandField":     isExpandField,
-		"IsExpandableStruct": isExpandableStruct,
-		"IsFieldExpanded":   u.IsFieldExpanded,
-		"GetExpandedFields": u.GetExpandedFields,
-		"GetExpandedFieldNames": u.GetExpandedFieldNames,
+		"ToOpenAPIType":            u.ToOpenAPIType,
+		"ToOpenAPIFormat":          u.ToOpenAPIFormat,
+		"ToOpenAPIMethod":          u.ToOpenAPIMethod,
+		"ToOpenAPIPath":            u.ToOpenAPIPath,
+		"GetSchemaName":            u.GetSchemaName,
+		"GetServiceName":           u.GetServiceName,
+		"GetOperationId":           u.GetOperationId,
+		"GetDescription":           u.GetDescription,
+		"GetExample":               u.GetExample,
+		"GetDefaultValue":          u.GetDefaultValue,
+		"IsRequired":               u.IsRequired,
+		"GetEnumValues":            u.GetEnumValues,
+		"GetStructFields":          u.GetStructFields,
+		"GetServiceMethods":        u.GetServiceMethods,
+		"IsExpandField":            isExpandField,
+		"IsExpandableStruct":       isExpandableStruct,
+		"IsFieldExpanded":          u.IsFieldExpanded,
+		"GetExpandedFields":        u.GetExpandedFields,
+		"GetExpandedFieldNames":    u.GetExpandedFieldNames,
+		"GetPropertyNameWithStyle": u.GetPropertyNameWithStyle,
 	}
 }
 
@@ -458,17 +482,17 @@ func (u *CodeUtils) getReferencedStruct(field *parser.Field, ast *parser.Thrift)
 	if field == nil || field.Type == nil {
 		return nil
 	}
-	
+
 	if !field.Type.Category.IsStructLike() {
 		return nil
 	}
-	
+
 	// 查找引用的结构体
 	typeName := field.Type.Name
 	if typeName == "" {
 		return nil
 	}
-	
+
 	// 处理命名空间
 	var actualTypeName string
 	if strings.Contains(typeName, ".") {
@@ -477,26 +501,26 @@ func (u *CodeUtils) getReferencedStruct(field *parser.Field, ast *parser.Thrift)
 	} else {
 		actualTypeName = typeName
 	}
-	
+
 	// 在当前 AST 中查找结构体
 	for _, structLike := range ast.Structs {
 		if structLike.Name == actualTypeName {
 			return structLike
 		}
 	}
-	
+
 	for _, union := range ast.Unions {
 		if union.Name == actualTypeName {
 			return union
 		}
 	}
-	
+
 	for _, exception := range ast.Exceptions {
 		if exception.Name == actualTypeName {
 			return exception
 		}
 	}
-	
+
 	return nil
 }
 
@@ -541,12 +565,12 @@ func (u *CodeUtils) GetExpandedFields(structLike *parser.StructLike) []*parser.F
 	if u.rootScope == nil || u.ast == nil {
 		return nil
 	}
-	
+
 	// 从 ExpandedStructs 中获取展开字段
 	if expandedStruct, exists := u.rootScope.ExpandedStructs[structLike.Name]; exists {
 		return expandedStruct.ExpandedFields
 	}
-	
+
 	return nil
 }
 
@@ -555,12 +579,12 @@ func (u *CodeUtils) GetExpandedFieldNames(structLike *parser.StructLike) map[str
 	if u.rootScope == nil || u.ast == nil {
 		return nil
 	}
-	
+
 	// 从 ExpandedStructs 中获取展开字段名映射
 	if expandedStruct, exists := u.rootScope.ExpandedStructs[structLike.Name]; exists {
 		return expandedStruct.ExpandedFieldNames
 	}
-	
+
 	return nil
 }
 
@@ -581,4 +605,100 @@ func (u *CodeUtils) IsFieldExpanded(field *parser.Field) bool {
 	}
 
 	return false
+}
+
+// GetPropertyNameWithStyle 根据命名风格获取属性名称
+func (u *CodeUtils) GetPropertyNameWithStyle(name string) string {
+	// 添加调试信息
+	u.log.Info("GetPropertyNameWithStyle called with:", name, "SnakeStyle:", u.features.SnakeStylePropertyName, "LowerCamelCase:", u.features.LowerCamelCasePropertyName)
+
+	if u.features.SnakeStylePropertyName {
+		result := snakify(name)
+		u.log.Info("Using snake_case:", name, "->", result)
+		return result
+	} else if u.features.LowerCamelCasePropertyName {
+		result := lowerCamelCase(name)
+		u.log.Info("Using lowerCamelCase:", name, "->", result)
+		return result
+	}
+	// 默认使用原始名称
+	u.log.Info("Using original name:", name)
+	return name
+}
+
+// snakify 将字符串转换为 snake_case
+func snakify(id string) string {
+	if id == "" {
+		return id
+	}
+
+	var result []rune
+	for i, r := range id {
+		if i > 0 && isUpper(r) {
+			result = append(result, '_')
+		}
+		result = append(result, toLower(r))
+	}
+	return string(result)
+}
+
+// lowerCamelCase 将字符串转换为 lowerCamelCase
+func lowerCamelCase(id string) string {
+	if id == "" {
+		return id
+	}
+
+	// 转换为 camelCase
+	var result []rune
+	nextUpper := false
+	for i, r := range id {
+		if i == 0 {
+			result = append(result, toLower(r))
+		} else if r == '_' {
+			nextUpper = true
+		} else if nextUpper {
+			result = append(result, toUpper(r))
+			nextUpper = false
+		} else {
+			result = append(result, r)
+		}
+	}
+	return string(result)
+}
+
+// isUpper 检查字符是否为大写
+func isUpper(r rune) bool {
+	return r >= 'A' && r <= 'Z'
+}
+
+// isLower 检查字符是否为小写
+func isLower(r rune) bool {
+	return r >= 'a' && r <= 'z'
+}
+
+// toUpper 将字符转换为大写
+func toUpper(r rune) rune {
+	if r >= 'a' && r <= 'z' {
+		return r - 32
+	}
+	return r
+}
+
+// toLower 将字符转换为小写
+func toLower(r rune) rune {
+	if r >= 'A' && r <= 'Z' {
+		return r + 32
+	}
+	return r
+}
+
+// getTypeScriptNamespace 获取 TypeScript namespace
+func (u *CodeUtils) getTypeScriptNamespace(ast *parser.Thrift) string {
+	for _, ns := range ast.Namespaces {
+		if ns.Language == "ts" || ns.Language == "openapi" {
+			// 将点号转换为路径分隔符
+			return strings.ReplaceAll(ns.Name, ".", "/")
+		}
+	}
+	return ""
 }

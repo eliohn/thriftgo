@@ -40,7 +40,7 @@ paths:
       {{if .Arguments}}
       parameters:
         {{range .Arguments}}
-        - name: {{.Name}}
+        - name: {{GetPropertyNameWithStyle .Name}}
           in: query
           required: {{IsRequired .}}
           schema:
@@ -114,7 +114,7 @@ components:
         {{if IsFieldExpanded .}}
         {{/* 展开字段：显示展开后的字段 */}}
         {{else}}
-        {{.Name}}:
+        {{GetPropertyNameWithStyle .Name}}:
           type: {{ToOpenAPIType .Type}}
           {{if ToOpenAPIFormat .Type}}
           format: {{ToOpenAPIFormat .Type}}
@@ -128,7 +128,7 @@ components:
         {{/* 添加展开的字段 */}}
         {{if GetExpandedFields .}}
         {{range GetExpandedFields .}}
-        {{.Name}}:
+        {{GetPropertyNameWithStyle .Name}}:
           type: {{ToOpenAPIType .Type}}
           {{if ToOpenAPIFormat .Type}}
           format: {{ToOpenAPIFormat .Type}}
@@ -143,7 +143,7 @@ components:
         {{range .Fields}}
         {{if not (IsFieldExpanded .)}}
         {{if IsRequired .}}
-        - {{.Name}}
+        - {{GetPropertyNameWithStyle .Name}}
         {{end}}
         {{end}}
         {{end}}
@@ -151,7 +151,7 @@ components:
         {{if GetExpandedFields .}}
         {{range GetExpandedFields .}}
         {{if IsRequired .}}
-        - {{.Name}}
+        - {{GetPropertyNameWithStyle .Name}}
         {{end}}
         {{end}}
         {{end}}
