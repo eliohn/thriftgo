@@ -42,8 +42,13 @@ basic1: install
 	@../../thriftgo.exe -g go -r -o gen-basic test_basic.thrift
 	@echo "基本测试代码生成完成，输出目录: gen-basic/"
 
-expand1: install
+expand1: install clean
 	@echo "生成扩展测试的 Golang 代码..."
-	@../../thriftgo.exe -g go -r -o gen-expand test_expand.thrift
+	@../../thriftgo.exe -g go:lower_camel_style_json_tag -r -o gen-expand test_expand.thrift
+	@echo "扩展测试代码生成完成，输出目录: gen-expand/"
+
+expand2: install clean
+	@echo "生成扩展测试的 Golang 代码..."
+	@../../thriftgo.exe -g go:snake_style_json_tag -r -o gen-expand test_expand.thrift
 	@echo "扩展测试代码生成完成，输出目录: gen-expand/"
 

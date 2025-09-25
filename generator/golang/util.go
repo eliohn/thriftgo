@@ -267,7 +267,10 @@ func (cu *CodeUtils) GenFieldTags(f *Field, insertPoint string) (string, error) 
 		requiredness := strings.ToLower(f.Requiredness.String())
 		tags = append(tags, fmt.Sprintf(`frugal:"%d,%s,%s"`, f.ID, requiredness, f.frugalTypeName))
 	}
-	return cu.genFieldTags(f, insertPoint, tags)
+
+	result, err := cu.genFieldTags(f, insertPoint, tags)
+
+	return result, err
 }
 
 // hasListOrSetOrEnum checks if a type requires special frugal type information.
@@ -350,13 +353,8 @@ func (cu *CodeUtils) genFieldTags(f *Field, insertPoint string, extend []string)
 	}
 
 	if len(gotags) == 0 && cu.Features().GenerateJSONTag || cu.Features().AlwaysGenerateJSONTag {
-		id := f.Name
-		if cu.Features().SnakeTyleJSONTag {
-			id = snakify(id)
-		}
-		if cu.Features().LowerCamelCaseJSONTag {
-			id = lowerCamelCase(id)
-		}
+		// 使用统一的标签名称生成逻辑
+		id := cu.generateTagName(f)
 
 		if f.Requiredness.IsOptional() && cu.Features().GenOmitEmptyTag {
 			tags = append(tags, fmt.Sprintf(`json:"%s,omitempty"`, id))
@@ -365,8 +363,51 @@ func (cu *CodeUtils) genFieldTags(f *Field, insertPoint string, extend []string)
 		}
 	}
 
+	// 添加默认的 form 和 query 标签（如果不存在）
+	cu.addDefaultHTTPTags(&tags, f, gotags)
+
 	str := fmt.Sprintf("`%s%s`", strings.Join(tags, " "), insertPoint)
 	return str, nil
+}
+
+// addDefaultHTTPTags 添加默认的 HTTP 标签（form 和 query）
+func (cu *CodeUtils) addDefaultHTTPTags(tags *[]string, f *Field, gotags []string) {
+	// 检查 go.tag 中是否包含 form 和 query 标签
+	hasFormTag := false
+	hasQueryTag := false
+	if len(gotags) > 0 {
+		tagStr := gotags[0]
+		hasFormTag = strings.Contains(tagStr, `form:"`)
+		hasQueryTag = strings.Contains(tagStr, `query:"`)
+	}
+
+	// 生成统一的标签名称
+	tagName := cu.generateTagName(f)
+
+	// 添加缺失的 form 和 query 标签
+	if !hasFormTag {
+		*tags = append(*tags, fmt.Sprintf(`form:"%s"`, tagName))
+	}
+
+	if !hasQueryTag {
+		*tags = append(*tags, fmt.Sprintf(`query:"%s"`, tagName))
+	}
+}
+
+// generateTagName 生成统一的标签名称，支持多种命名风格
+func (cu *CodeUtils) generateTagName(f *Field) string {
+	// 对于展开字段，使用原始的 Thrift 字段名作为基础
+	name := f.Field.Name
+
+	// 根据配置选择命名风格
+	if cu.Features().SnakeTyleJSONTag {
+		name = snakify(name)
+	} else if cu.Features().LowerCamelCaseJSONTag {
+		name = lowerCamelCase(name)
+	}
+	// 默认使用原始名称（驼峰命名）
+
+	return name
 }
 
 // GetKeyType returns the key type of the given type. T must be a map type.

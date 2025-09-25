@@ -100,7 +100,7 @@ var defaultFeatures = Features{
 	GenerateJSONTag:             true,
 	AlwaysGenerateJSONTag:       false,
 	SnakeTyleJSONTag:            false,
-	LowerCamelCaseJSONTag:       false,
+	LowerCamelCaseJSONTag:       true,
 	ThriftStreaming:             false,
 	EnumAsINT32:                 false,
 	TrimIDL:                     false,
