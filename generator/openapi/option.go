@@ -35,7 +35,7 @@ var allParams = []Parameter{
 	},
 	{
 		name: "base_path",
-		desc: "API 基础路径 (默认: /api)",
+		desc: "API 基础路径 (默认: /)",
 	},
 	{
 		name: "description",

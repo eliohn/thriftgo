@@ -51,7 +51,7 @@ func NewCodeUtils(log backend.LogFunc) *CodeUtils {
 			SkipEmpty:                  false,
 			Version:                    "3.0.0",
 			Title:                      "Thrift API",
-			BasePath:                   "/api",
+			BasePath:                   "/",
 			SnakeStylePropertyName:     false,
 			LowerCamelCasePropertyName: true, // 默认使用小驼峰命名
 		},

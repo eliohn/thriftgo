@@ -26,7 +26,7 @@ thriftgo -g openapi -o output_dir your_file.thrift
 - `skip_empty`: 跳过生成空文件 (默认: false)
 - `version`: OpenAPI 规范版本 (默认: 3.0.0)
 - `title`: API 标题 (默认: Thrift API)
-- `base_path`: API 基础路径 (默认: /api)
+- `base_path`: API 基础路径 (默认: /)
 - `description`: API 描述
 - `contact_name`: 联系人姓名
 - `contact_email`: 联系人邮箱
