@@ -352,14 +352,37 @@ func (cu *CodeUtils) genFieldTags(f *Field, insertPoint string, extend []string)
 		}
 	}
 
-	if len(gotags) == 0 && cu.Features().GenerateJSONTag || cu.Features().AlwaysGenerateJSONTag {
-		// 使用统一的标签名称生成逻辑
-		id := cu.generateTagName(f)
+	// 检查是否需要生成 JSON 标签
+	shouldGenJSONTag := false
+	if len(gotags) == 0 && cu.Features().GenerateJSONTag {
+		shouldGenJSONTag = true
+	} else if cu.Features().AlwaysGenerateJSONTag {
+		shouldGenJSONTag = true
+	}
 
-		if f.Requiredness.IsOptional() && cu.Features().GenOmitEmptyTag {
-			tags = append(tags, fmt.Sprintf(`json:"%s,omitempty"`, id))
-		} else {
-			tags = append(tags, fmt.Sprintf(`json:"%s"`, id))
+	// 对于展开字段，即使有 go.tag 也要生成 JSON 标签（除非明确包含 json 标签）
+	if f.originalStructField != nil && cu.Features().GenerateJSONTag {
+		shouldGenJSONTag = true
+	}
+
+	if shouldGenJSONTag {
+		// 检查 go.tag 中是否已经包含 json 标签
+		hasJSONTag := false
+		if len(gotags) > 0 {
+			tagStr := gotags[0]
+			hasJSONTag = strings.Contains(tagStr, `json:"`)
+		}
+
+		// 如果没有 json 标签，则生成
+		if !hasJSONTag {
+			// 使用统一的标签名称生成逻辑
+			id := cu.generateTagName(f)
+
+			if f.Requiredness.IsOptional() && cu.Features().GenOmitEmptyTag {
+				tags = append(tags, fmt.Sprintf(`json:"%s,omitempty"`, id))
+			} else {
+				tags = append(tags, fmt.Sprintf(`json:"%s"`, id))
+			}
 		}
 	}
 

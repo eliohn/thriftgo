@@ -1,5 +1,5 @@
 struct CaptchaInfo {
-    1: string data (go.tag = "form:\"data\" json:\"data\" query:\"data\"");
+    1: string data ;
     2: i32 code_data;
     3: string msg_data;
 }
