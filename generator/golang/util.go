@@ -372,6 +372,11 @@ func (cu *CodeUtils) genFieldTags(f *Field, insertPoint string, extend []string)
 
 // addDefaultHTTPTags 添加默认的 HTTP 标签（form 和 query）
 func (cu *CodeUtils) addDefaultHTTPTags(tags *[]string, f *Field, gotags []string) {
+	// 检查是否启用了默认 HTTP 标签生成
+	if !cu.Features().GenDefaultHTTPTags {
+		return
+	}
+
 	// 检查 go.tag 中是否包含 form 和 query 标签
 	hasFormTag := false
 	hasQueryTag := false
