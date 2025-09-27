@@ -188,6 +188,82 @@ func (s *Scope) collectImports(ast *parser.Thrift) {
 	}
 }
 
+// collectImportsForService 为服务文件收集导入信息
+func (s *Scope) collectImportsForService(ast *parser.Thrift, serviceName string) {
+	importMap := make(map[string][]string)
+
+	// 遍历所有服务，收集外部类型引用
+	for _, service := range ast.Services {
+		if service.Name == serviceName {
+			s.collectImportsFromServiceWithCurrentFile(service, importMap, ast, serviceName)
+		}
+	}
+
+	// 在分离文件模式下，服务文件需要导入所有在同一个 Thrift 文件中定义的其他类型
+	// 直接添加所有结构体、联合体和异常类型
+	for _, structLike := range ast.Structs {
+		moduleName := strings.ToLower(structLike.Name)
+		types := importMap[moduleName]
+		found := false
+		for _, t := range types {
+			if t == structLike.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			importMap[moduleName] = append(types, structLike.Name)
+		}
+	}
+
+	for _, union := range ast.Unions {
+		moduleName := strings.ToLower(union.Name)
+		types := importMap[moduleName]
+		found := false
+		for _, t := range types {
+			if t == union.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			importMap[moduleName] = append(types, union.Name)
+		}
+	}
+
+	for _, exception := range ast.Exceptions {
+		moduleName := strings.ToLower(exception.Name)
+		types := importMap[moduleName]
+		found := false
+		for _, t := range types {
+			if t == exception.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			importMap[moduleName] = append(types, exception.Name)
+		}
+	}
+
+	// 获取当前文件的 TypeScript namespace
+	currentNamespace := s.utils.getTypeScriptNamespace(ast)
+
+	// 转换为 ImportInfo 列表
+	for module, types := range importMap {
+		if len(types) > 0 {
+			// 计算相对路径
+			relativePath := s.calculateRelativePath(currentNamespace, module)
+
+			s.Imports = append(s.Imports, ImportInfo{
+				Module: module,
+				Types:  types,
+				Path:   relativePath,
+			})
+		}
+	}
+}
+
 // collectImportsFromStruct 从结构体中收集导入信息
 func (s *Scope) collectImportsFromStruct(structLike *parser.StructLike, importMap map[string][]string, ast *parser.Thrift) {
 	// 获取展开字段名映射
@@ -211,6 +287,29 @@ func (s *Scope) collectImportsFromStruct(structLike *parser.StructLike, importMa
 	}
 }
 
+// collectImportsFromStructWithCurrentFile 从结构体中收集导入信息，指定当前文件类型
+func (s *Scope) collectImportsFromStructWithCurrentFile(structLike *parser.StructLike, importMap map[string][]string, ast *parser.Thrift, currentFileType string) {
+	// 获取展开字段名映射
+	expandedFieldNames := make(map[string]bool)
+	if expandedStruct, exists := s.ExpandedStructs[structLike.Name]; exists {
+		expandedFieldNames = expandedStruct.ExpandedFieldNames
+	}
+
+	// 只收集未被展开的字段的导入信息
+	for _, field := range structLike.Fields {
+		if !expandedFieldNames[field.Name] {
+			s.collectImportsFromTypeWithCurrentFile(field.Type, importMap, ast, currentFileType)
+		}
+	}
+
+	// 收集展开字段的导入信息
+	if expandedStruct, exists := s.ExpandedStructs[structLike.Name]; exists {
+		for _, expandedField := range expandedStruct.ExpandedFields {
+			s.collectImportsFromTypeWithCurrentFile(expandedField.Type, importMap, ast, currentFileType)
+		}
+	}
+}
+
 // collectImportsFromService 从服务中收集导入信息
 func (s *Scope) collectImportsFromService(service *parser.Service, importMap map[string][]string, ast *parser.Thrift) {
 	for _, function := range service.Functions {
@@ -226,18 +325,38 @@ func (s *Scope) collectImportsFromService(service *parser.Service, importMap map
 	}
 }
 
+// collectImportsFromServiceWithCurrentFile 从服务中收集导入信息，指定当前文件类型
+func (s *Scope) collectImportsFromServiceWithCurrentFile(service *parser.Service, importMap map[string][]string, ast *parser.Thrift, currentFileType string) {
+	for _, function := range service.Functions {
+		// 收集函数参数的导入
+		for _, arg := range function.Arguments {
+			s.collectImportsFromTypeWithCurrentFile(arg.Type, importMap, ast, currentFileType)
+		}
+
+		// 收集函数返回类型的导入
+		if function.FunctionType != nil {
+			s.collectImportsFromTypeWithCurrentFile(function.FunctionType, importMap, ast, currentFileType)
+		}
+	}
+}
+
 // collectImportsFromType 从类型中收集导入信息
 func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]string, ast *parser.Thrift) {
+	s.collectImportsFromTypeWithCurrentFile(typ, importMap, ast, "")
+}
+
+// collectImportsFromTypeWithCurrentFile 从类型中收集导入信息，指定当前正在生成的文件类型
+func (s *Scope) collectImportsFromTypeWithCurrentFile(typ *parser.Type, importMap map[string][]string, ast *parser.Thrift, currentFileType string) {
 	if typ == nil {
 		return
 	}
 
 	// 处理容器类型
 	if typ.ValueType != nil {
-		s.collectImportsFromType(typ.ValueType, importMap, ast)
+		s.collectImportsFromTypeWithCurrentFile(typ.ValueType, importMap, ast, currentFileType)
 	}
 	if typ.KeyType != nil {
-		s.collectImportsFromType(typ.KeyType, importMap, ast)
+		s.collectImportsFromTypeWithCurrentFile(typ.KeyType, importMap, ast, currentFileType)
 	}
 
 	// 处理外部类型引用
@@ -273,7 +392,8 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 			// 处理本地类型引用（不包含点号）
 			// 在分离文件模式下，即使类型在同一个 Thrift 文件中定义，
 			// 也会生成到不同的 TypeScript 文件中，所以需要导入
-			if !s.isTypeDefinedInCurrentFile(typ.Name) {
+			// 但是要排除当前正在生成的文件中的类型
+			if s.isTypeDefinedInCurrentFile(typ.Name) && typ.Name != currentFileType {
 				// 对于本地类型引用，在分离文件模式下需要导入
 				// 使用类型名作为模块名，这样 calculateRelativePath 可以正确处理
 				moduleName := strings.ToLower(typ.Name)
@@ -680,9 +800,10 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 		return "./" + strings.ToLower(targetModule)
 	}
 
-	// 在分离文件模式下，如果目标模块不包含点号（即本地类型），
-	// 说明是同一个 Thrift 文件中的其他类型，应该使用相对路径
-	if !strings.Contains(targetModule, ".") {
+	// 检查是否是本地类型（在同一个 Thrift 文件中定义的类型）
+	// 本地类型的模块名通常是类型名的小写形式
+	//fmt.Printf("DEBUG: currentNamespace=%s, targetModule=%s, isLocalType=%v\n", currentNamespace, targetModule, s.isLocalType(targetModule))
+	if s.isLocalType(targetModule) {
 		return "./" + targetModule
 	}
 
@@ -748,6 +869,43 @@ func (s *Scope) isTypeDefinedInCurrentFile(typeName string) bool {
 	// 检查类型别名
 	for _, typedef := range s.Typedefs {
 		if typedef.Alias == typeName {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isLocalType 检查模块名是否对应本地类型
+func (s *Scope) isLocalType(moduleName string) bool {
+	// 检查是否是本地类型的模块名（类型名的小写形式）
+	// 遍历所有本地类型，检查模块名是否匹配
+	for _, enum := range s.Enums {
+		if strings.ToLower(enum.Name) == moduleName {
+			return true
+		}
+	}
+
+	for _, structLike := range s.Structs {
+		if strings.ToLower(structLike.Name) == moduleName {
+			return true
+		}
+	}
+
+	for _, union := range s.Unions {
+		if strings.ToLower(union.Name) == moduleName {
+			return true
+		}
+	}
+
+	for _, exception := range s.Exceptions {
+		if strings.ToLower(exception.Name) == moduleName {
+			return true
+		}
+	}
+
+	for _, typedef := range s.Typedefs {
+		if strings.ToLower(typedef.Alias) == moduleName {
 			return true
 		}
 	}

@@ -356,6 +356,11 @@ func (t *TypeScriptBackend) renderServiceFile(scope *Scope, executeTpl *template
 		Package:         scope.Package,
 		Imports:         []ImportInfo{}, // 不继承父 scope 的导入信息
 		Services:        []*parser.Service{service},
+		Structs:         scope.Structs,         // 复制结构体信息
+		Unions:          scope.Unions,          // 复制联合体信息
+		Exceptions:      scope.Exceptions,      // 复制异常信息
+		Enums:           scope.Enums,           // 复制枚举信息
+		Typedefs:        scope.Typedefs,        // 复制类型别名信息
 		ExpandedStructs: scope.ExpandedStructs, // 复制展开结构体信息
 		utils:           scope.utils,
 	}
@@ -363,7 +368,8 @@ func (t *TypeScriptBackend) renderServiceFile(scope *Scope, executeTpl *template
 	// 为服务接口文件单独收集导入信息
 	ast := GetGlobalAST()
 	if ast != nil {
-		serviceScope.collectImports(ast)
+		// 在分离文件模式下，服务文件需要导入其他类型文件
+		serviceScope.collectImportsForService(ast, service.Name)
 	}
 
 	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "singleService")
@@ -607,6 +613,11 @@ func (t *TypeScriptBackend) renderSimpleServiceImplementationFile(scope *Scope, 
 		Package:         scope.Package,
 		Imports:         []ImportInfo{}, // 不继承父 scope 的导入信息
 		Services:        []*parser.Service{service},
+		Structs:         scope.Structs,         // 复制结构体信息
+		Unions:          scope.Unions,          // 复制联合体信息
+		Exceptions:      scope.Exceptions,      // 复制异常信息
+		Enums:           scope.Enums,           // 复制枚举信息
+		Typedefs:        scope.Typedefs,        // 复制类型别名信息
 		ExpandedStructs: scope.ExpandedStructs, // 复制展开结构体信息
 		utils:           scope.utils,
 	}
@@ -614,7 +625,8 @@ func (t *TypeScriptBackend) renderSimpleServiceImplementationFile(scope *Scope, 
 	// 为客户端文件单独收集导入信息
 	ast := GetGlobalAST()
 	if ast != nil {
-		serviceScope.collectImports(ast)
+		// 在分离文件模式下，客户端文件需要导入其他类型文件
+		serviceScope.collectImportsForService(ast, service.Name)
 	}
 
 	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "simpleServiceImplementation")
