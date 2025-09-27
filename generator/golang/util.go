@@ -409,17 +409,32 @@ func (cu *CodeUtils) addDefaultHTTPTags(tags *[]string, f *Field, gotags []strin
 		hasQueryTag = strings.Contains(tagStr, `query:"`)
 	}
 
-	// 生成统一的标签名称
-	tagName := cu.generateTagName(f)
+    // 生成统一的标签名称，支持通过注解覆盖
+    tagName := cu.generateTagName(f)
+    formName := tagName
+    queryName := tagName
+
+    // 优先使用字段注解覆盖（兼容常见命名）
+    // 展开字段的注解已被保留（除了 go.tag），因此这里同样生效
+    if vals := f.Field.Annotations.Get("api.form"); len(vals) > 0 && vals[0] != "" {
+        formName = vals[0]
+    } else if vals := f.Field.Annotations.Get("api.form_name"); len(vals) > 0 && vals[0] != "" {
+        formName = vals[0]
+    }
+    if vals := f.Field.Annotations.Get("api.query"); len(vals) > 0 && vals[0] != "" {
+        queryName = vals[0]
+    } else if vals := f.Field.Annotations.Get("api.query_name"); len(vals) > 0 && vals[0] != "" {
+        queryName = vals[0]
+    }
 
 	// 添加缺失的 form 和 query 标签
-	if !hasFormTag {
-		*tags = append(*tags, fmt.Sprintf(`form:"%s"`, tagName))
-	}
+    if !hasFormTag {
+        *tags = append(*tags, fmt.Sprintf(`form:"%s"`, formName))
+    }
 
-	if !hasQueryTag {
-		*tags = append(*tags, fmt.Sprintf(`query:"%s"`, tagName))
-	}
+    if !hasQueryTag {
+        *tags = append(*tags, fmt.Sprintf(`query:"%s"`, queryName))
+    }
 }
 
 // generateTagName 生成统一的标签名称，支持多种命名风格

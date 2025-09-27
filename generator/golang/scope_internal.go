@@ -557,6 +557,17 @@ func (s *Scope) buildStructLike(cu *CodeUtils, v *parser.StructLike, usedName ..
 						// Create a new field with adjusted ID to avoid conflicts
 						adjustedField := *structField
 						adjustedField.ID = structField.ID + (f.ID * 1000)
+
+						// 清除展开字段的 go.tag 注解，因为展开字段的字段名和 ID 已经改变
+						// 但保留其他重要的注解如 api.query, api.form 等
+						adjustedField.Annotations = make(parser.Annotations, 0)
+						for _, annotation := range structField.Annotations {
+							// 只清除 go.tag 注解，保留其他所有注解
+							if annotation.Key != "go.tag" {
+								adjustedField.Annotations = append(adjustedField.Annotations, annotation)
+							}
+						}
+
 						expandedFieldName := s.identify(cu, structField.Name)
 						expandedFieldName = st.scope.Add(expandedFieldName, structField.Name)
 						expandedField := &Field{

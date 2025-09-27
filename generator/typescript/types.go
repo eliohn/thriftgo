@@ -431,7 +431,7 @@ func GetStructFields(field *parser.Field) []*parser.Field {
 }
 
 // GetStructFieldAnnotations 获取结构体字段的注解信息
-// 从 AST 中动态获取结构体字段的注解信息
+// 从 AST 中动态获取结构体字段的注解信息，包括展开字段
 func GetStructFieldAnnotations(field *parser.Field, ast *parser.Thrift) map[string]map[string]string {
 	annotations := make(map[string]map[string]string)
 
@@ -466,6 +466,15 @@ func GetStructFieldAnnotations(field *parser.Field, ast *parser.Thrift) map[stri
 
 		// 添加所有字段，包括没有注解的字段
 		annotations[structField.Name] = fieldAnnotations
+	}
+
+	// 检查是否有展开字段需要处理
+	// 这里需要检查字段是否有 thrift.expand 注解
+	if expandAnno := field.Annotations.Get("thrift.expand"); len(expandAnno) > 0 && expandAnno[0] == "true" {
+		// 如果字段被展开，我们需要获取被展开结构体的字段注解
+		// 但这里我们已经在上面处理了结构体字段，所以展开字段的注解应该已经包含在内
+		// 不过我们需要确保展开字段的注解被正确保留
+		// 由于展开字段的注解处理在 golang 生成器中，这里我们主要处理的是模板中的使用
 	}
 
 	return annotations
@@ -508,6 +517,79 @@ func GetStructFieldAnnotationsForTemplate(field *parser.Field) map[string]map[st
 		return make(map[string]map[string]string)
 	}
 	return GetStructFieldAnnotations(field, ast)
+}
+
+// GetStructFieldByName 根据字段名获取结构体字段
+func GetStructFieldByName(structField *parser.Field, fieldName string) *parser.Field {
+	if structField == nil || structField.Type == nil || !structField.Type.Category.IsStructLike() {
+		return nil
+	}
+
+	ast := GetGlobalAST()
+	if ast == nil {
+		return nil
+	}
+
+	structLike := findStructLikeByName(structField.Type.Name, ast)
+	if structLike == nil {
+		return nil
+	}
+
+	// 查找字段
+	for _, field := range structLike.Fields {
+		if field.Name == fieldName {
+			return field
+		}
+	}
+
+	return nil
+}
+
+// GetFieldExpandedFields 获取字段对应的展开字段
+// 如果字段是结构体类型且被展开，返回展开的字段列表
+func GetFieldExpandedFields(field *parser.Field) []*parser.Field {
+	if field == nil || field.Type == nil || !field.Type.Category.IsStructLike() {
+		return nil
+	}
+
+	// 检查字段是否有展开注解
+	shouldExpand := false
+	
+	// 检查 thrift.expand 注解
+	if expandAnno := field.Annotations.Get("thrift.expand"); len(expandAnno) > 0 && expandAnno[0] == "true" {
+		shouldExpand = true
+	}
+	
+	// 检查引用的结构体是否可展开
+	if !shouldExpand {
+		ast := GetGlobalAST()
+		if ast != nil {
+			structLike := findStructLikeByName(field.Type.Name, ast)
+			if structLike != nil {
+				if isExpandableStruct(structLike) {
+					shouldExpand = true
+				}
+			}
+		}
+	}
+
+	if shouldExpand {
+		// 获取被展开的结构体定义
+		ast := GetGlobalAST()
+		if ast == nil {
+			return nil
+		}
+
+		structLike := findStructLikeByName(field.Type.Name, ast)
+		if structLike == nil {
+			return nil
+		}
+
+		// 返回结构体的字段作为展开字段
+		return structLike.Fields
+	}
+
+	return nil
 }
 
 // IsStructField 检查字段是否为结构体类型

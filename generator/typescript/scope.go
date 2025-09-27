@@ -515,6 +515,7 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"IsExpandableStruct":       isExpandableStruct,
 		"GetExpandedFields":        func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
 		"GetExpandedFieldNames":    func(structLike *parser.StructLike) map[string]bool { return u.getExpandedFieldNames(structLike) },
+		"GetFieldExpandedFields":   GetFieldExpandedFields,
 		"IsFieldExpanded": func(field *parser.Field, expandedFields []*parser.Field) bool {
 			// 检查字段是否应该展开
 			shouldExpand := isExpandField(field)
@@ -541,6 +542,7 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"IsStructField":                        IsStructField,
 		"GetStructFieldAnnotations":            GetStructFieldAnnotations,
 		"GetStructFieldAnnotationsForTemplate": GetStructFieldAnnotationsForTemplate,
+		"GetStructFieldByName":                 GetStructFieldByName,
 		"GetStructComment":                     GetStructComment,
 		"GetFieldComment":                      GetFieldComment,
 		"GetEnumComment":                       GetEnumComment,
