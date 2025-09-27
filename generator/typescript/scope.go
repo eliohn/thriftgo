@@ -271,12 +271,23 @@ func (s *Scope) collectImportsFromType(typ *parser.Type, importMap map[string][]
 			}
 		} else {
 			// 处理本地类型引用（不包含点号）
-			// 检查是否是当前文件中定义的类型
+			// 在分离文件模式下，即使类型在同一个 Thrift 文件中定义，
+			// 也会生成到不同的 TypeScript 文件中，所以需要导入
 			if !s.isTypeDefinedInCurrentFile(typ.Name) {
-				// 对于本地类型引用，即使不在当前文件中定义，
-				// 在分离文件模式下也需要导入（因为每个类型都会生成到单独的文件中）
-				// 这里不需要特殊处理，让调用方处理导入逻辑
-				return
+				// 对于本地类型引用，在分离文件模式下需要导入
+				// 使用类型名作为模块名，这样 calculateRelativePath 可以正确处理
+				moduleName := strings.ToLower(typ.Name)
+				types := importMap[moduleName]
+				found := false
+				for _, t := range types {
+					if t == typ.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					importMap[moduleName] = append(types, typ.Name)
+				}
 			}
 		}
 	}
@@ -662,7 +673,17 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 	// 如果当前文件没有 namespace，目标文件也没有 namespace，使用相对路径
 	if currentNamespace == "" {
 		return "./" + targetModule
+	}
 
+	// 如果是同一个 namespace，在分离文件模式下使用相对路径
+	if currentNamespace == targetModule {
+		return "./" + strings.ToLower(targetModule)
+	}
+
+	// 在分离文件模式下，如果目标模块不包含点号（即本地类型），
+	// 说明是同一个 Thrift 文件中的其他类型，应该使用相对路径
+	if !strings.Contains(targetModule, ".") {
+		return "./" + targetModule
 	}
 
 	currentParts := strings.Split(currentNamespace, "/")

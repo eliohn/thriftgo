@@ -352,11 +352,18 @@ func (t *TypeScriptBackend) renderServiceFile(scope *Scope, executeTpl *template
 
 	// 创建只包含该服务的 scope
 	serviceScope := &Scope{
-		Filename: scope.Filename,
-		Package:  scope.Package,
-		Imports:  scope.Imports,
-		Services: []*parser.Service{service},
-		utils:    scope.utils,
+		Filename:        scope.Filename,
+		Package:         scope.Package,
+		Imports:         []ImportInfo{}, // 不继承父 scope 的导入信息
+		Services:        []*parser.Service{service},
+		ExpandedStructs: scope.ExpandedStructs, // 复制展开结构体信息
+		utils:           scope.utils,
+	}
+
+	// 为服务接口文件单独收集导入信息
+	ast := GetGlobalAST()
+	if ast != nil {
+		serviceScope.collectImports(ast)
 	}
 
 	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "singleService")
@@ -596,11 +603,18 @@ func (t *TypeScriptBackend) renderSimpleServiceImplementationFile(scope *Scope, 
 
 	// 创建只包含该服务的 scope
 	serviceScope := &Scope{
-		Filename: scope.Filename,
-		Package:  scope.Package,
-		Imports:  scope.Imports, // Imports are passed from the parent scope
-		Services: []*parser.Service{service},
-		utils:    scope.utils,
+		Filename:        scope.Filename,
+		Package:         scope.Package,
+		Imports:         []ImportInfo{}, // 不继承父 scope 的导入信息
+		Services:        []*parser.Service{service},
+		ExpandedStructs: scope.ExpandedStructs, // 复制展开结构体信息
+		utils:           scope.utils,
+	}
+
+	// 为客户端文件单独收集导入信息
+	ast := GetGlobalAST()
+	if ast != nil {
+		serviceScope.collectImports(ast)
 	}
 
 	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "simpleServiceImplementation")

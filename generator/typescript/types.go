@@ -255,7 +255,7 @@ func snakify(id string) string {
 	if id == "" {
 		return id
 	}
-	
+
 	var result []rune
 	for i, r := range id {
 		if i > 0 && isUpper(r) {
@@ -271,7 +271,7 @@ func lowerCamelCase(id string) string {
 	if id == "" {
 		return id
 	}
-	
+
 	// 转换为 camelCase
 	var result []rune
 	nextUpper := false
@@ -424,10 +424,18 @@ func GetStructFields(field *parser.Field) []*parser.Field {
 		return nil
 	}
 
-	// 这里需要从 AST 中查找结构体定义
-	// 由于模板中无法直接访问 AST，我们需要通过其他方式
-	// 暂时返回空，后续可以通过其他方式实现
-	return nil
+	// 从 AST 中查找结构体定义
+	ast := GetGlobalAST()
+	if ast == nil {
+		return nil
+	}
+
+	structLike := findStructLikeByName(field.Type.Name, ast)
+	if structLike == nil {
+		return nil
+	}
+
+	return structLike.Fields
 }
 
 // GetStructFieldAnnotations 获取结构体字段的注解信息
@@ -554,12 +562,12 @@ func GetFieldExpandedFields(field *parser.Field) []*parser.Field {
 
 	// 检查字段是否有展开注解
 	shouldExpand := false
-	
+
 	// 检查 thrift.expand 注解
 	if expandAnno := field.Annotations.Get("thrift.expand"); len(expandAnno) > 0 && expandAnno[0] == "true" {
 		shouldExpand = true
 	}
-	
+
 	// 检查引用的结构体是否可展开
 	if !shouldExpand {
 		ast := GetGlobalAST()
