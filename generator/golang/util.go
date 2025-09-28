@@ -400,41 +400,56 @@ func (cu *CodeUtils) addDefaultHTTPTags(tags *[]string, f *Field, gotags []strin
 		return
 	}
 
-	// 检查 go.tag 中是否包含 form 和 query 标签
+	// 检查 go.tag 中是否包含 form、query 和 path 标签
 	hasFormTag := false
 	hasQueryTag := false
+	hasPathTag := false
 	if len(gotags) > 0 {
 		tagStr := gotags[0]
 		hasFormTag = strings.Contains(tagStr, `form:"`)
 		hasQueryTag = strings.Contains(tagStr, `query:"`)
+		hasPathTag = strings.Contains(tagStr, `path:"`)
 	}
 
-    // 生成统一的标签名称，支持通过注解覆盖
-    tagName := cu.generateTagName(f)
-    formName := tagName
-    queryName := tagName
+	// 生成统一的标签名称，支持通过注解覆盖
+	tagName := cu.generateTagName(f)
+	formName := tagName
+	queryName := tagName
 
-    // 优先使用字段注解覆盖（兼容常见命名）
-    // 展开字段的注解已被保留（除了 go.tag），因此这里同样生效
-    if vals := f.Field.Annotations.Get("api.form"); len(vals) > 0 && vals[0] != "" {
-        formName = vals[0]
-    } else if vals := f.Field.Annotations.Get("api.form_name"); len(vals) > 0 && vals[0] != "" {
-        formName = vals[0]
-    }
-    if vals := f.Field.Annotations.Get("api.query"); len(vals) > 0 && vals[0] != "" {
-        queryName = vals[0]
-    } else if vals := f.Field.Annotations.Get("api.query_name"); len(vals) > 0 && vals[0] != "" {
-        queryName = vals[0]
-    }
+	// 优先使用字段注解覆盖（兼容常见命名）
+	// 展开字段的注解已被保留（除了 go.tag），因此这里同样生效
+	if vals := f.Field.Annotations.Get("api.form"); len(vals) > 0 && vals[0] != "" {
+		formName = vals[0]
+	} else if vals := f.Field.Annotations.Get("api.form_name"); len(vals) > 0 && vals[0] != "" {
+		formName = vals[0]
+	}
+	if vals := f.Field.Annotations.Get("api.query"); len(vals) > 0 && vals[0] != "" {
+		queryName = vals[0]
+	} else if vals := f.Field.Annotations.Get("api.query_name"); len(vals) > 0 && vals[0] != "" {
+		queryName = vals[0]
+	}
 
 	// 添加缺失的 form 和 query 标签
-    if !hasFormTag {
-        *tags = append(*tags, fmt.Sprintf(`form:"%s"`, formName))
-    }
+	if !hasFormTag {
+		*tags = append(*tags, fmt.Sprintf(`form:"%s"`, formName))
+	}
 
-    if !hasQueryTag {
-        *tags = append(*tags, fmt.Sprintf(`query:"%s"`, queryName))
-    }
+	if !hasQueryTag {
+		*tags = append(*tags, fmt.Sprintf(`query:"%s"`, queryName))
+	}
+
+	// 检查是否有 api.path 注解，如果有则生成 path 标签
+	if vals := f.Field.Annotations.Get("api.path"); len(vals) > 0 && vals[0] != "" {
+		pathName := vals[0]
+		if !hasPathTag {
+			*tags = append(*tags, fmt.Sprintf(`path:"%s"`, pathName))
+		}
+	} else if vals := f.Field.Annotations.Get("api.path_name"); len(vals) > 0 && vals[0] != "" {
+		pathName := vals[0]
+		if !hasPathTag {
+			*tags = append(*tags, fmt.Sprintf(`path:"%s"`, pathName))
+		}
+	}
 }
 
 // generateTagName 生成统一的标签名称，支持多种命名风格

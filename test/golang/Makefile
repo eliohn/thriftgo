@@ -52,3 +52,7 @@ expand2: install clean
 	@../../thriftgo.exe -g go:snake_style_json_tag -r -o gen-expand test_expand.thrift
 	@echo "扩展测试代码生成完成，输出目录: gen-expand/"
 
+expreq: install clean
+	@echo "生成扩展测试的 Golang 代码..."
+	@../../thriftgo.exe -g go:snake_style_json_tag -r -o gen-expreq test_expreq.thrift
+	@echo "扩展测试代码生成完成，输出目录: gen-expreq/"
