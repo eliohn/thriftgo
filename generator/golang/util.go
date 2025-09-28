@@ -429,26 +429,30 @@ func (cu *CodeUtils) addDefaultHTTPTags(tags *[]string, f *Field, gotags []strin
 		queryName = vals[0]
 	}
 
-	// 添加缺失的 form 和 query 标签
+	// 检查是否有 api.path 注解
+	hasApiPath := false
+	pathName := ""
+	if vals := f.Field.Annotations.Get("api.path"); len(vals) > 0 && vals[0] != "" {
+		hasApiPath = true
+		pathName = vals[0]
+	} else if vals := f.Field.Annotations.Get("api.path_name"); len(vals) > 0 && vals[0] != "" {
+		hasApiPath = true
+		pathName = vals[0]
+	}
+
+	// 添加缺失的 form 标签
 	if !hasFormTag {
 		*tags = append(*tags, fmt.Sprintf(`form:"%s"`, formName))
 	}
 
-	if !hasQueryTag {
+	// 如果没有 api.path 注解，则添加 query 标签
+	if !hasApiPath && !hasQueryTag {
 		*tags = append(*tags, fmt.Sprintf(`query:"%s"`, queryName))
 	}
 
-	// 检查是否有 api.path 注解，如果有则生成 path 标签
-	if vals := f.Field.Annotations.Get("api.path"); len(vals) > 0 && vals[0] != "" {
-		pathName := vals[0]
-		if !hasPathTag {
-			*tags = append(*tags, fmt.Sprintf(`path:"%s"`, pathName))
-		}
-	} else if vals := f.Field.Annotations.Get("api.path_name"); len(vals) > 0 && vals[0] != "" {
-		pathName := vals[0]
-		if !hasPathTag {
-			*tags = append(*tags, fmt.Sprintf(`path:"%s"`, pathName))
-		}
+	// 如果有 api.path 注解，则生成 path 标签
+	if hasApiPath && !hasPathTag {
+		*tags = append(*tags, fmt.Sprintf(`path:"%s"`, pathName))
 	}
 }
 
