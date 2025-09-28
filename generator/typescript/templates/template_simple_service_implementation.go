@@ -51,6 +51,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
    * API: PUT {{ .Annotations.Get "api.put" }}
 {{- else if .Annotations.Get "api.delete" }}
    * API: DELETE {{ .Annotations.Get "api.delete" }}
+{{- else if .Annotations.Get "api.patch" }}
+   * API: PATCH {{ .Annotations.Get "api.patch" }}
 {{- end }}
 {{- range .Arguments }}
    * @param {{ GetPropertyNameWithStyle .Name }} {{ .Name }}
@@ -63,7 +65,7 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
    */
   async {{ GetPropertyNameWithStyle .Name }}({{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyNameWithStyle .Name }}{{ if and (IsOptional .) (not (IsStructField .)) }}?{{ end }}: {{ GetFieldType . }}{{ end }}): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
     try {
-      let url = '{{ if .Annotations.Get "api.get" }}{{ index (.Annotations.Get "api.get") 0 }}{{ else if .Annotations.Get "api.post" }}{{ index (.Annotations.Get "api.post") 0 }}{{ else if .Annotations.Get "api.put" }}{{ index (.Annotations.Get "api.put") 0 }}{{ else if .Annotations.Get "api.delete" }}{{ index (.Annotations.Get "api.delete") 0 }}{{ end }}';
+      let url = '{{ if .Annotations.Get "api.get" }}{{ index (.Annotations.Get "api.get") 0 }}{{ else if .Annotations.Get "api.post" }}{{ index (.Annotations.Get "api.post") 0 }}{{ else if .Annotations.Get "api.put" }}{{ index (.Annotations.Get "api.put") 0 }}{{ else if .Annotations.Get "api.delete" }}{{ index (.Annotations.Get "api.delete") 0 }}{{ else if .Annotations.Get "api.patch" }}{{ index (.Annotations.Get "api.patch") 0 }}{{ end }}';
 {{- range $index, $arg := .Arguments }}
 {{- end }}
 
@@ -111,8 +113,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 
 {{- range $argIndex, $arg := .Arguments }}
       {{- if not (IsStructField $arg) }}
-      if (url.includes('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}')) {
-        url = url.replace(String('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}'), String({{ GetPropertyNameWithStyle $arg.Name }}));
+      if (url.includes(':'+'{{ GetPropertyNameWithStyle $arg.Name }}')) {
+        url = url.replace(String(':'+'{{ GetPropertyNameWithStyle $arg.Name }}'), String({{ GetPropertyNameWithStyle $arg.Name }}));
       }
       {{- end }}
 {{- end }}
@@ -170,9 +172,11 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- $apiMethod = "PUT" }}
       {{- else if .Annotations.Get "api.delete" }}
       {{- $apiMethod = "DELETE" }}
+      {{- else if .Annotations.Get "api.patch" }}
+      {{- $apiMethod = "PATCH" }}
       {{- end }}
 
-      {{- if or (eq $apiMethod "POST") (eq $apiMethod "PUT") }}
+      {{- if or (eq $apiMethod "POST") (eq $apiMethod "PUT") (eq $apiMethod "PATCH") }}
       let bodyParam : any = {};
       
       {{- range $argIndex, $arg := .Arguments }}
@@ -238,13 +242,13 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- end }}
       {{- else if not (IsStructField $arg) }}
       {{- if and (not ($arg.Annotations.Get "api.path")) (not ($arg.Annotations.Get "api.query")) (not ($arg.Annotations.Get "api.body")) }}
- 	  if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null && !url.includes('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}')) {
+ 	  if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null && !url.includes(':'+'{{ GetPropertyNameWithStyle $arg.Name }}')) {
         queryParams['{{ GetPropertyNameWithStyle $arg.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }};
       }
       {{- end }}
       {{- end }}
       {{- end }}
-      {{- else if or (eq $apiMethod "POST") (eq $apiMethod "PUT") }}
+      {{- else if or (eq $apiMethod "POST") (eq $apiMethod "PUT") (eq $apiMethod "PATCH") }}
       {{- $hasBodyParam := false }}
       {{- range .Arguments }}
       {{- if .Annotations.Get "api.body" }}
@@ -280,7 +284,7 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- end }}
       {{- end }}
       {{- else }}
-      if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null && !url.includes('{'+'{{ GetPropertyNameWithStyle $arg.Name }}'+'}')) {
+      if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null && !url.includes(':'+'{{ GetPropertyNameWithStyle $arg.Name }}')) {
         bodyParam['{{ GetPropertyNameWithStyle $arg.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }};
       }
       {{- end }}
@@ -298,6 +302,8 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       let response = await axios.put(url, bodyParam, { params: queryParams });
       {{- else if eq $apiMethod "DELETE" }}
       let response = await axios.delete(url, { params: queryParams });
+      {{- else if eq $apiMethod "PATCH" }}
+      let response = await axios.patch(url, bodyParam, { params: queryParams });
       {{- end }}
       
       if (response.status >= 200 && response.status < 300) {

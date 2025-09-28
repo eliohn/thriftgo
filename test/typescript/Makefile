@@ -46,6 +46,12 @@ merchants2: install clean
 
 req_test: install clean
 	@echo "生成商户测试的 TypeScript 代码..."
+
+patch_test: install clean
+	@echo "生成 PATCH 测试的 TypeScript 代码..."
+	@mkdir -p gen-patch
+	@../../thriftgo.exe -g typescript -r -o gen-patch test_patch.thrift
+	@echo "PATCH 测试代码生成完成，输出目录: gen-patch/"
 	@mkdir -p gen-request
 	@../../thriftgo.exe -g typescript:lower_camel_case_property_name=true -r -o gen-request ./test_expreq.thrift
 	@echo "商户测试代码生成完成，输出目录: gen-request/"
