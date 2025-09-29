@@ -1,4 +1,5 @@
 namespace go base.com
+namespace ts base.ct
 
 enum StatusCode {
     SUCCESS = 0,

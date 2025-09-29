@@ -63,7 +63,9 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
    * @returns void
 {{- end }}
    */
-  async {{ GetPropertyNameWithStyle .Name }}({{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyNameWithStyle .Name }}{{ if and (IsOptional .) (not (IsStructField .)) }}?{{ end }}: {{ GetFieldType . }}{{ end }}): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
+  async {{ GetPropertyNameWithStyle .Name }}(
+    {{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyNameWithStyle .Name }}{{ if and (IsOptional .) (not (IsStructField .)) }}?{{ end }}: {{ GetFieldType . }}{{ if and (IsStructField .) (IsStructEmptyOrAllFieldsOptional .) }} = {}{{ end }}{{ end }}
+  ): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
     try {
       let url = '{{ if .Annotations.Get "api.get" }}{{ index (.Annotations.Get "api.get") 0 }}{{ else if .Annotations.Get "api.post" }}{{ index (.Annotations.Get "api.post") 0 }}{{ else if .Annotations.Get "api.put" }}{{ index (.Annotations.Get "api.put") 0 }}{{ else if .Annotations.Get "api.delete" }}{{ index (.Annotations.Get "api.delete") 0 }}{{ else if .Annotations.Get "api.patch" }}{{ index (.Annotations.Get "api.patch") 0 }}{{ end }}';
 {{- range $index, $arg := .Arguments }}

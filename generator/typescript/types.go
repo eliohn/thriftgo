@@ -42,6 +42,11 @@ func GetGlobalAST() *parser.Thrift {
 	return globalAST
 }
 
+// IsSelfReference 检查类型是否是自引用
+func IsSelfReference(typeName string, currentStructName string) bool {
+	return typeName == currentStructName
+}
+
 // TypeMapping 定义 Thrift 类型到 TypeScript 类型的映射
 type TypeMapping struct {
 	ThriftType     string
@@ -756,4 +761,232 @@ func GetEnumOptions(enum *parser.Enum) []map[string]interface{} {
 		}
 	}
 	return options
+}
+
+// IsStructEmptyOrAllFieldsOptional 检查结构体是否为空或所有字段都是可选的
+func IsStructEmptyOrAllFieldsOptional(field *parser.Field) bool {
+	fmt.Printf("=== IsStructEmptyOrAllFieldsOptional 调试信息 ===\n")
+	fmt.Printf("字段名: %s\n", field.Name)
+	fmt.Printf("字段类型: %s\n", field.Type.Name)
+
+	if field == nil || field.Type == nil || !field.Type.Category.IsStructLike() {
+		fmt.Printf("字段不是结构体类型，返回 false\n")
+		return false
+	}
+
+	// 获取全局AST来查找结构体定义
+	ast := GetGlobalAST()
+	if ast == nil {
+		fmt.Printf("全局AST为空，返回 false\n")
+		return false
+	}
+
+	// 查找结构体定义
+	structLike := findStructLikeByName(field.Type.Name, ast)
+	if structLike == nil {
+		fmt.Printf("未找到结构体定义: %s，返回 false\n", field.Type.Name)
+		return false
+	}
+
+	fmt.Printf("找到结构体: %s，字段数量: %d\n", structLike.Name, len(structLike.Fields))
+
+	// 检查结构体是否有展开字段
+	// 这里我们需要检查结构体是否被标记为可展开的
+
+	result := isStructEmptyOrAllFieldsOptionalWithExpandedCheck(structLike, ast)
+	fmt.Printf("最终结果: %v\n", result)
+	fmt.Printf("==========================================\n")
+
+	return result
+}
+
+// IsStructEmptyOrAllFieldsOptionalWithExpanded 检查结构体是否为空或所有字段都是可选的（包含展开字段）
+func IsStructEmptyOrAllFieldsOptionalWithExpanded(field *parser.Field, expandedFields []*parser.Field) bool {
+	if field == nil || field.Type == nil || !field.Type.Category.IsStructLike() {
+		return false
+	}
+
+	// 获取全局AST来查找结构体定义
+	ast := GetGlobalAST()
+	if ast == nil {
+		return false
+	}
+
+	// 查找结构体定义
+	structLike := findStructLikeByName(field.Type.Name, ast)
+	if structLike == nil {
+		return false
+	}
+
+	return isStructEmptyOrAllFieldsOptionalWithExpandedFields(structLike, ast, expandedFields)
+}
+
+// isStructEmptyOrAllFieldsOptionalWithAST 检查结构体是否为空或所有字段都是可选的（包含展开字段处理）
+func isStructEmptyOrAllFieldsOptionalWithAST(structLike *parser.StructLike, ast *parser.Thrift) bool {
+	// 空结构体
+	if len(structLike.Fields) == 0 {
+		return true
+	}
+
+	// 检查所有字段是否都是可选的（排除展开字段）
+	allFieldsOptional := true
+
+	// 检查原始字段，但排除展开字段
+	for _, f := range structLike.Fields {
+		// 检查字段是否是展开字段
+		// 展开字段通常有特定的注解或者是从其他结构体继承的
+		// 这里我们需要检查字段是否被标记为展开字段
+		if isExpandedField(f) {
+			// 跳过展开字段
+			continue
+		}
+
+		// 如果有任何非展开字段是必需的，则返回false
+		if f.Requiredness == parser.FieldType_Required {
+			allFieldsOptional = false
+			break
+		}
+	}
+
+	// 所有非展开字段都是可选的
+	return allFieldsOptional
+}
+
+// isExpandedField 检查字段是否是展开字段
+func isExpandedField(field *parser.Field) bool {
+	// 这里需要检查字段是否被标记为展开字段
+	// 展开字段通常有特定的注解或者是从其他结构体继承的
+	// 由于我们无法直接访问全局作用域，这里暂时使用简单的启发式方法
+
+	// 检查字段是否有展开相关的注解
+	if field.Annotations != nil {
+		// 检查是否有 expandable 相关的注解
+		for _, annotation := range field.Annotations {
+			if strings.Contains(strings.ToLower(annotation.Key), "expandable") {
+				return true
+			}
+		}
+	}
+
+	// 暂时假设所有字段都不是展开字段
+	// 在实际使用中，这需要从全局作用域中获取展开字段信息
+	return false
+}
+
+// isStructEmptyOrAllFieldsOptionalWithExpandedCheck 检查结构体是否为空或所有字段都是可选的（考虑展开字段）
+func isStructEmptyOrAllFieldsOptionalWithExpandedCheck(structLike *parser.StructLike, ast *parser.Thrift) bool {
+	fmt.Printf("--- isStructEmptyOrAllFieldsOptionalWithExpandedCheck 详细调试 ---\n")
+	fmt.Printf("结构体名称: %s\n", structLike.Name)
+	fmt.Printf("字段数量: %d\n", len(structLike.Fields))
+
+	// 空结构体
+	if len(structLike.Fields) == 0 {
+		fmt.Printf("空结构体，返回 true\n")
+		return true
+	}
+
+	// 检查所有字段是否都是可选的（排除展开字段）
+	allFieldsOptional := true
+
+	// 检查原始字段，但排除展开字段
+	for i, f := range structLike.Fields {
+		fmt.Printf("字段 %d: 名称=%s, 必需性=%v\n", i+1, f.Name, f.Requiredness)
+
+		// 如果结构体有展开字段，我们需要检查哪些字段是展开的
+		// 这里我们使用一个简单的启发式方法：检查字段类型是否与展开字段类型匹配
+		if isFieldExpanded(f, structLike) {
+			// 跳过展开字段
+			fmt.Printf("  跳过展开字段: %s\n", f.Name)
+			continue
+		}
+
+		// 如果有任何非展开字段是必需的，则返回false
+		if f.Requiredness == parser.FieldType_Required {
+			fmt.Printf("  发现必需字段: %s，设置 allFieldsOptional = false\n", f.Name)
+			allFieldsOptional = false
+			break
+		} else {
+			fmt.Printf("  字段 %s 是可选的\n", f.Name)
+		}
+	}
+
+	// 所有非展开字段都是可选的
+	fmt.Printf("最终结果: allFieldsOptional = %v\n", allFieldsOptional)
+	fmt.Printf("--- 结束详细调试 ---\n")
+	return allFieldsOptional
+}
+
+// isFieldExpanded 检查字段是否是展开字段
+func isFieldExpanded(field *parser.Field, structLike *parser.StructLike) bool {
+	fmt.Printf("  isFieldExpanded: 检查字段 %s\n", field.Name)
+
+	// 检查字段是否应该展开
+	shouldExpand := isExpandField(field)
+	fmt.Printf("  isFieldExpanded: isExpandField(%s) = %v\n", field.Name, shouldExpand)
+	if shouldExpand {
+		fmt.Printf("  isFieldExpanded: 字段 %s 有 thrift.expand 注解\n", field.Name)
+		return true
+	}
+
+	// 检查引用的结构体是否可展开
+	if field.Type != nil && field.Type.Category.IsStructLike() {
+		fmt.Printf("  isFieldExpanded: 字段 %s 是结构体类型 %s\n", field.Name, field.Type.Name)
+		// 获取全局AST来查找引用的结构体
+		ast := GetGlobalAST()
+		if ast != nil {
+			referencedStruct := findStructLikeByName(field.Type.Name, ast)
+			if referencedStruct != nil {
+				isExpandable := isExpandableStruct(referencedStruct)
+				fmt.Printf("  isFieldExpanded: 引用的结构体 %s 是否可展开: %v\n", field.Type.Name, isExpandable)
+				if isExpandable {
+					fmt.Printf("  isFieldExpanded: 字段 %s 引用的结构体 %s 是可展开的\n", field.Name, field.Type.Name)
+					return true
+				}
+			} else {
+				fmt.Printf("  isFieldExpanded: 未找到引用的结构体 %s\n", field.Type.Name)
+			}
+		}
+	} else {
+		fmt.Printf("  isFieldExpanded: 字段 %s 不是结构体类型\n", field.Name)
+	}
+
+	fmt.Printf("  isFieldExpanded: 字段 %s 不是展开字段\n", field.Name)
+	return false
+}
+
+// isStructEmptyOrAllFieldsOptionalWithExpandedFields 检查结构体是否为空或所有字段都是可选的（包含展开字段）
+func isStructEmptyOrAllFieldsOptionalWithExpandedFields(structLike *parser.StructLike, ast *parser.Thrift, expandedFields []*parser.Field) bool {
+	// 空结构体
+	if len(structLike.Fields) == 0 && len(expandedFields) == 0 {
+		return true
+	}
+
+	// 检查所有字段是否都是可选的（包括展开字段）
+	allFieldsOptional := true
+
+	// 检查原始字段
+	for _, f := range structLike.Fields {
+		// 如果有任何字段是必需的，则返回false
+		if f.Requiredness == parser.FieldType_Required {
+			allFieldsOptional = false
+			break
+		}
+	}
+
+	// 如果原始字段中有必需字段，直接返回false
+	if !allFieldsOptional {
+		return false
+	}
+
+	// 检查展开字段
+	for _, f := range expandedFields {
+		// 展开字段通常都是可选的，但为了完整性我们仍然检查
+		if f.Requiredness == parser.FieldType_Required {
+			allFieldsOptional = false
+			break
+		}
+	}
+
+	// 所有字段都是可选的
+	return allFieldsOptional
 }

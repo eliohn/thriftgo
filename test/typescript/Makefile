@@ -48,6 +48,12 @@ enum_test: install clean
 	@mkdir -p gen-enum_test
 	@../../thriftgo.exe -g typescript:lower_camel_case_property_name=true -r -o gen-enum_test test_enum_tag.thrift
 	@echo "商户测试代码生成完成，输出目录: gen-enum_test/"
+
+default_values_test: install clean
+	@echo "生成商户测试的 TypeScript 代码..."
+	@mkdir -p gen-default_values_test
+	@../../thriftgo.exe -g typescript:lower_camel_case_property_name=true -r -o gen-default_values_test test_default_values.thrift
+	@echo "商户测试代码生成完成，输出目录: gen-default_values_test/"
 req_test: install clean
 	@echo "生成商户测试的 TypeScript 代码..."
 

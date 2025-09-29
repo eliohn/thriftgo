@@ -380,6 +380,15 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	importMap := make(map[string][]string)
 	localTypes := make(map[string]bool)
 
+	// 创建一个临时的 scope，只包含当前结构体，用于正确识别自引用
+	tempScope := &Scope{
+		Filename:        scope.Filename,
+		Package:         scope.Package,
+		Structs:         []*parser.StructLike{structLike},
+		ExpandedStructs: scope.ExpandedStructs,
+		utils:           scope.utils,
+	}
+
 	// 获取展开字段名映射
 	expandedFieldNames := make(map[string]bool)
 	if expandedStruct, exists := scope.ExpandedStructs[structLike.Name]; exists {
@@ -389,7 +398,7 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	// 只收集未被展开的字段的导入
 	for _, field := range structLike.Fields {
 		if !expandedFieldNames[field.Name] {
-			scope.collectImportsFromType(field.Type, importMap, ast)
+			tempScope.collectImportsFromTypeWithCurrentFile(field.Type, importMap, ast, structLike.Name)
 			// 检查字段类型及其容器类型中的本地类型引用
 			t.collectLocalTypesFromType(field.Type, localTypes)
 		}
@@ -398,7 +407,7 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	// 收集展开字段的导入
 	if expandedStruct, exists := scope.ExpandedStructs[structLike.Name]; exists {
 		for _, expandedField := range expandedStruct.ExpandedFields {
-			scope.collectImportsFromType(expandedField.Type, importMap, ast)
+			tempScope.collectImportsFromTypeWithCurrentFile(expandedField.Type, importMap, ast, structLike.Name)
 			// 检查字段类型及其容器类型中的本地类型引用
 			t.collectLocalTypesFromType(expandedField.Type, localTypes)
 		}
@@ -408,18 +417,36 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	// 在分离文件模式下，需要根据结构体的实际位置确定 namespace
 	currentNamespace := t.utils.getTypeScriptNamespace(ast)
 
-	// 转换为 ImportInfo 列表
-	var imports []ImportInfo
+	// 转换为 ImportInfo 列表，并去重
+	importSet := make(map[string]ImportInfo)
 	for module, types := range importMap {
 		if len(types) > 0 {
 			// 计算相对路径
 			relativePath := scope.calculateRelativePath(currentNamespace, module)
 
-			imports = append(imports, ImportInfo{
-				Module: module,
-				Types:  types,
-				Path:   relativePath,
-			})
+			// 创建导入键，用于去重
+			importKey := relativePath
+
+			// 如果已经存在相同路径的导入，合并类型
+			if existingImport, exists := importSet[importKey]; exists {
+				// 合并类型列表，去重
+				existingTypes := make(map[string]bool)
+				for _, t := range existingImport.Types {
+					existingTypes[t] = true
+				}
+				for _, t := range types {
+					if !existingTypes[t] {
+						existingImport.Types = append(existingImport.Types, t)
+					}
+				}
+				importSet[importKey] = existingImport
+			} else {
+				importSet[importKey] = ImportInfo{
+					Module: module,
+					Types:  types,
+					Path:   relativePath,
+				}
+			}
 		}
 	}
 
@@ -427,14 +454,61 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 	for typeName := range localTypes {
 		// 在分离文件模式下，所有本地类型引用都需要导入
 		// 因为每个类型都会生成到单独的文件中
-		imports = append(imports, ImportInfo{
-			Module: ".",
-			Types:  []string{typeName},
-			Path:   "./" + strings.ToLower(typeName),
-		})
+		localPath := "./" + strings.ToLower(typeName)
+		importKey := localPath
+
+		// 如果已经存在相同路径的导入，合并类型
+		if existingImport, exists := importSet[importKey]; exists {
+			// 检查类型是否已存在
+			found := false
+			for _, t := range existingImport.Types {
+				if t == typeName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				existingImport.Types = append(existingImport.Types, typeName)
+				importSet[importKey] = existingImport
+			}
+		} else {
+			importSet[importKey] = ImportInfo{
+				Module: ".",
+				Types:  []string{typeName},
+				Path:   localPath,
+			}
+		}
+	}
+
+	// 将去重后的导入添加到列表中，过滤掉自引用的导入
+	var imports []ImportInfo
+	for _, importInfo := range importSet {
+		// 过滤掉自引用的导入
+		if !isSelfReferenceImport(importInfo, structLike.Name) {
+			imports = append(imports, importInfo)
+		}
 	}
 
 	return imports
+}
+
+// isSelfReferenceImport 检查导入是否是自引用
+func isSelfReferenceImport(importInfo ImportInfo, currentStructName string) bool {
+	// 检查导入路径是否是当前结构体的路径
+	expectedPath := "./" + strings.ToLower(currentStructName)
+	fmt.Printf("检查自引用导入: path=%s, expectedPath=%s, types=%v, currentStructName=%s\n",
+		importInfo.Path, expectedPath, importInfo.Types, currentStructName)
+
+	if importInfo.Path == expectedPath {
+		// 检查导入的类型是否包含当前结构体名称
+		for _, typeName := range importInfo.Types {
+			if typeName == currentStructName {
+				fmt.Printf("发现自引用导入，跳过: %s\n", typeName)
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // findModuleForType 查找类型所在的模块

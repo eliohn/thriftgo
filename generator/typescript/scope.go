@@ -15,6 +15,7 @@
 package typescript
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -173,18 +174,42 @@ func (s *Scope) collectImports(ast *parser.Thrift) {
 	// 获取当前文件的 TypeScript namespace
 	currentNamespace := s.utils.getTypeScriptNamespace(ast)
 
-	// 转换为 ImportInfo 列表
+	// 转换为 ImportInfo 列表，并去重
+	importSet := make(map[string]ImportInfo)
 	for module, types := range importMap {
 		if len(types) > 0 {
 			// 计算相对路径
 			relativePath := s.calculateRelativePath(currentNamespace, module)
 
-			s.Imports = append(s.Imports, ImportInfo{
-				Module: module,
-				Types:  types,
-				Path:   relativePath,
-			})
+			// 创建导入键，用于去重
+			importKey := relativePath
+
+			// 如果已经存在相同路径的导入，合并类型
+			if existingImport, exists := importSet[importKey]; exists {
+				// 合并类型列表，去重
+				existingTypes := make(map[string]bool)
+				for _, t := range existingImport.Types {
+					existingTypes[t] = true
+				}
+				for _, t := range types {
+					if !existingTypes[t] {
+						existingImport.Types = append(existingImport.Types, t)
+					}
+				}
+				importSet[importKey] = existingImport
+			} else {
+				importSet[importKey] = ImportInfo{
+					Module: module,
+					Types:  types,
+					Path:   relativePath,
+				}
+			}
 		}
+	}
+
+	// 将去重后的导入添加到列表中
+	for _, importInfo := range importSet {
+		s.Imports = append(s.Imports, importInfo)
 	}
 }
 
@@ -200,7 +225,7 @@ func (s *Scope) collectImportsForService(ast *parser.Thrift, serviceName string)
 	}
 
 	// 在分离文件模式下，服务文件需要导入所有在同一个 Thrift 文件中定义的其他类型
-	// 直接添加所有结构体、联合体和异常类型
+	// 但是要避免重复添加已经在服务中引用的类型
 	for _, structLike := range ast.Structs {
 		moduleName := strings.ToLower(structLike.Name)
 		types := importMap[moduleName]
@@ -246,21 +271,48 @@ func (s *Scope) collectImportsForService(ast *parser.Thrift, serviceName string)
 		}
 	}
 
+	// 注意：服务接口文件不应该导入自己，所以这里不添加服务接口的导入
+	// 服务接口文件只导入其他类型，不导入自己
+
 	// 获取当前文件的 TypeScript namespace
 	currentNamespace := s.utils.getTypeScriptNamespace(ast)
 
-	// 转换为 ImportInfo 列表
+	// 转换为 ImportInfo 列表，并去重
+	importSet := make(map[string]ImportInfo)
 	for module, types := range importMap {
 		if len(types) > 0 {
 			// 计算相对路径
 			relativePath := s.calculateRelativePath(currentNamespace, module)
 
-			s.Imports = append(s.Imports, ImportInfo{
-				Module: module,
-				Types:  types,
-				Path:   relativePath,
-			})
+			// 创建导入键，用于去重
+			importKey := relativePath
+
+			// 如果已经存在相同路径的导入，合并类型
+			if existingImport, exists := importSet[importKey]; exists {
+				// 合并类型列表，去重
+				existingTypes := make(map[string]bool)
+				for _, t := range existingImport.Types {
+					existingTypes[t] = true
+				}
+				for _, t := range types {
+					if !existingTypes[t] {
+						existingImport.Types = append(existingImport.Types, t)
+					}
+				}
+				importSet[importKey] = existingImport
+			} else {
+				importSet[importKey] = ImportInfo{
+					Module: module,
+					Types:  types,
+					Path:   relativePath,
+				}
+			}
 		}
+	}
+
+	// 将去重后的导入添加到列表中
+	for _, importInfo := range importSet {
+		s.Imports = append(s.Imports, importInfo)
 	}
 }
 
@@ -392,9 +444,17 @@ func (s *Scope) collectImportsFromTypeWithCurrentFile(typ *parser.Type, importMa
 			// 处理本地类型引用（不包含点号）
 			// 在分离文件模式下，即使类型在同一个 Thrift 文件中定义，
 			// 也会生成到不同的 TypeScript 文件中，所以需要导入
-			// 但是要排除当前正在生成的文件中的类型
-			if s.isTypeDefinedInCurrentFile(typ.Name) && typ.Name != currentFileType {
-				// 对于本地类型引用，在分离文件模式下需要导入
+			// 但是要排除当前正在生成的文件中的类型（自引用）
+			if s.isTypeDefinedInCurrentFile(typ.Name) {
+				// 如果是自引用类型（当前正在生成的文件类型），则不需要导入
+				if currentFileType != "" && typ.Name == currentFileType {
+					return
+				}
+
+				// 调试信息：添加本地类型导入
+				// fmt.Printf("添加本地类型导入: %s (currentFileType: %s)\n", typ.Name, currentFileType)
+
+				// 对于其他本地类型引用，在分离文件模式下需要导入
 				// 使用类型名作为模块名，这样 calculateRelativePath 可以正确处理
 				moduleName := strings.ToLower(typ.Name)
 				types := importMap[moduleName]
@@ -642,6 +702,7 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"GetDefaultValue":          GetDefaultValue,
 		"GetDefaultValueForType":   GetDefaultValueForType,
 		"GetConstantValue":         GetConstantValue,
+		"IsSelfReference":          IsSelfReference,
 		"IsExpandField":            isExpandField,
 		"IsExpandableStruct":       isExpandableStruct,
 		"GetExpandedFields":        func(structLike *parser.StructLike) []*parser.Field { return u.getExpandedFields(structLike) },
@@ -690,6 +751,8 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"ToLower":                              strings.ToLower,
 		"ToUpper":                              strings.ToUpper,
 		"HasSuffix":                            strings.HasSuffix,
+		"IsStructEmptyOrAllFieldsOptional":     IsStructEmptyOrAllFieldsOptional,
+		"IsStructEmptyOrAllFieldsOptionalWithExpanded": IsStructEmptyOrAllFieldsOptionalWithExpanded,
 	}
 }
 
@@ -793,50 +856,100 @@ func (s *Scope) findModuleNamespaceRecursively(module string, ast *parser.Thrift
 
 // calculateRelativePath 计算相对路径
 func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) string {
+	fmt.Printf("=== calculateRelativePath 调试信息 ===\n")
+	fmt.Printf("当前包名 (currentNamespace): '%s'\n", currentNamespace)
+	fmt.Printf("目标模块 (targetModule): '%s'\n", targetModule)
+	fmt.Printf("当前包名来源: 从 Thrift 文件的 'namespace ts' 声明中解析\n")
+
+	// 显示当前文件自己的路径信息
+	if currentNamespace != "" {
+		fmt.Printf("当前文件路径: %s/\n", currentNamespace)
+		fmt.Printf("当前文件目录层级: %d 层\n", len(strings.Split(currentNamespace, "/")))
+	} else {
+		fmt.Printf("当前文件路径: 根目录\n")
+	}
+
+	fmt.Printf("=====================================\n")
+
 	// 如果当前文件没有 namespace，目标文件也没有 namespace，使用相对路径
 	if currentNamespace == "" {
-		return "./" + targetModule
+		result := "./" + targetModule
+		fmt.Printf("calculateRelativePath: no namespace, returning '%s'\n", result)
+		return result
 	}
 
 	// 如果是同一个 namespace，在分离文件模式下使用相对路径
 	if currentNamespace == targetModule {
-		return "./" + strings.ToLower(targetModule)
+		result := "./" + strings.ToLower(targetModule)
+		fmt.Printf("calculateRelativePath: same namespace, returning '%s'\n", result)
+		return result
 	}
 
 	// 检查是否是本地类型（在同一个 Thrift 文件中定义的类型）
 	// 本地类型的模块名通常是类型名的小写形式
-	//fmt.Printf("DEBUG: currentNamespace=%s, targetModule=%s, isLocalType=%v\n", currentNamespace, targetModule, s.isLocalType(targetModule))
-	if s.isLocalType(targetModule) {
-		return "./" + targetModule
+	isLocal := s.isLocalType(targetModule)
+	fmt.Printf("calculateRelativePath: isLocalType=%v\n", isLocal)
+	if isLocal {
+		result := "./" + targetModule
+		fmt.Printf("calculateRelativePath: local type, returning '%s'\n", result)
+		return result
 	}
 
 	currentParts := strings.Split(currentNamespace, "/")
 	targetParts := strings.Split(targetModule, "/")
+	fmt.Printf("calculateRelativePath: currentParts=%v, targetParts=%v\n", currentParts, targetParts)
 
 	// 检查是否是兄弟目录（有相同的父目录）
 	// 例如：common.base 到 common.enums 需要 ../enums
 	if len(currentParts) > 1 && len(targetParts) > 1 {
 		currentParent := strings.Join(currentParts[:len(currentParts)-1], "/")
 		targetParent := strings.Join(targetParts[:len(targetParts)-1], "/")
+		fmt.Printf("calculateRelativePath: currentParent='%s', targetParent='%s'\n", currentParent, targetParent)
 
 		if currentParent == targetParent {
 			// 兄弟目录，使用 ../ 前缀
-			return "../" + targetParts[len(targetParts)-1]
+			result := "../" + targetParts[len(targetParts)-1]
+			fmt.Printf("calculateRelativePath: sibling directory, returning '%s'\n", result)
+			return result
 		}
 	}
 
 	// 计算需要向上几级目录
 	// 例如：从 domain/merchantVO 到 common/base 需要向上 2 级
 	currentDepth := len(currentParts)
-	// 计算向上级数
+
+	// 如果目标模块没有层级（只是一个简单的模块名），说明它在根目录
+	// 这种情况下，我们需要向上到根目录，然后直接引用模块名
+	if len(targetParts) == 1 {
+		// 目标在根目录，需要向上 currentDepth 层
+		upLevels := currentDepth
+		fmt.Printf("calculateRelativePath: target in root, currentDepth=%d, upLevels=%d\n", currentDepth, upLevels)
+
+		// 构建相对路径
+		var pathParts []string
+		for i := 0; i < upLevels; i++ {
+			pathParts = append(pathParts, "..")
+		}
+		pathParts = append(pathParts, targetParts...)
+		result := strings.Join(pathParts, "/")
+		fmt.Printf("calculateRelativePath: final result='%s'\n", result)
+		return result
+	}
+
+	// 如果目标模块有层级，需要计算更复杂的路径
+	// 这里暂时使用原来的逻辑
 	upLevels := currentDepth
+	fmt.Printf("calculateRelativePath: currentDepth=%d, upLevels=%d\n", currentDepth, upLevels)
+
 	// 构建相对路径
 	var pathParts []string
 	for i := 0; i < upLevels; i++ {
 		pathParts = append(pathParts, "..")
 	}
 	pathParts = append(pathParts, targetParts...)
-	return strings.Join(pathParts, "/")
+	result := strings.Join(pathParts, "/")
+	fmt.Printf("calculateRelativePath: final result='%s'\n", result)
+	return result
 }
 
 // isTypeDefinedInCurrentFile 检查类型是否在当前文件中定义
@@ -909,6 +1022,13 @@ func (s *Scope) isLocalType(moduleName string) bool {
 
 	for _, typedef := range s.Typedefs {
 		if strings.ToLower(typedef.Alias) == moduleName {
+			return true
+		}
+	}
+
+	// 检查服务
+	for _, service := range s.Services {
+		if strings.ToLower(service.Name) == moduleName {
 			return true
 		}
 	}
