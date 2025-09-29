@@ -496,14 +496,11 @@ func (t *TypeScriptBackend) collectImportsForStruct(scope *Scope, structLike *pa
 func isSelfReferenceImport(importInfo ImportInfo, currentStructName string) bool {
 	// 检查导入路径是否是当前结构体的路径
 	expectedPath := "./" + strings.ToLower(currentStructName)
-	fmt.Printf("检查自引用导入: path=%s, expectedPath=%s, types=%v, currentStructName=%s\n",
-		importInfo.Path, expectedPath, importInfo.Types, currentStructName)
 
 	if importInfo.Path == expectedPath {
 		// 检查导入的类型是否包含当前结构体名称
 		for _, typeName := range importInfo.Types {
 			if typeName == currentStructName {
-				fmt.Printf("发现自引用导入，跳过: %s\n", typeName)
 				return true
 			}
 		}

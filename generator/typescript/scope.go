@@ -15,7 +15,6 @@
 package typescript
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -856,61 +855,34 @@ func (s *Scope) findModuleNamespaceRecursively(module string, ast *parser.Thrift
 
 // calculateRelativePath 计算相对路径
 func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) string {
-	fmt.Printf("=== calculateRelativePath 调试信息 ===\n")
-	fmt.Printf("当前包名 (currentNamespace): '%s'\n", currentNamespace)
-	fmt.Printf("目标模块 (targetModule): '%s'\n", targetModule)
-	fmt.Printf("当前包名来源: 从 Thrift 文件的 'namespace ts' 声明中解析\n")
-
-	// 显示当前文件自己的路径信息
-	if currentNamespace != "" {
-		fmt.Printf("当前文件路径: %s/\n", currentNamespace)
-		fmt.Printf("当前文件目录层级: %d 层\n", len(strings.Split(currentNamespace, "/")))
-	} else {
-		fmt.Printf("当前文件路径: 根目录\n")
-	}
-
-	fmt.Printf("=====================================\n")
-
 	// 如果当前文件没有 namespace，目标文件也没有 namespace，使用相对路径
 	if currentNamespace == "" {
-		result := "./" + targetModule
-		fmt.Printf("calculateRelativePath: no namespace, returning '%s'\n", result)
-		return result
+		return "./" + targetModule
 	}
 
 	// 如果是同一个 namespace，在分离文件模式下使用相对路径
 	if currentNamespace == targetModule {
-		result := "./" + strings.ToLower(targetModule)
-		fmt.Printf("calculateRelativePath: same namespace, returning '%s'\n", result)
-		return result
+		return "./" + strings.ToLower(targetModule)
 	}
 
 	// 检查是否是本地类型（在同一个 Thrift 文件中定义的类型）
 	// 本地类型的模块名通常是类型名的小写形式
-	isLocal := s.isLocalType(targetModule)
-	fmt.Printf("calculateRelativePath: isLocalType=%v\n", isLocal)
-	if isLocal {
-		result := "./" + targetModule
-		fmt.Printf("calculateRelativePath: local type, returning '%s'\n", result)
-		return result
+	if s.isLocalType(targetModule) {
+		return "./" + targetModule
 	}
 
 	currentParts := strings.Split(currentNamespace, "/")
 	targetParts := strings.Split(targetModule, "/")
-	fmt.Printf("calculateRelativePath: currentParts=%v, targetParts=%v\n", currentParts, targetParts)
 
 	// 检查是否是兄弟目录（有相同的父目录）
 	// 例如：common.base 到 common.enums 需要 ../enums
 	if len(currentParts) > 1 && len(targetParts) > 1 {
 		currentParent := strings.Join(currentParts[:len(currentParts)-1], "/")
 		targetParent := strings.Join(targetParts[:len(targetParts)-1], "/")
-		fmt.Printf("calculateRelativePath: currentParent='%s', targetParent='%s'\n", currentParent, targetParent)
 
 		if currentParent == targetParent {
 			// 兄弟目录，使用 ../ 前缀
-			result := "../" + targetParts[len(targetParts)-1]
-			fmt.Printf("calculateRelativePath: sibling directory, returning '%s'\n", result)
-			return result
+			return "../" + targetParts[len(targetParts)-1]
 		}
 	}
 
@@ -923,7 +895,6 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 	if len(targetParts) == 1 {
 		// 目标在根目录，需要向上 currentDepth 层
 		upLevels := currentDepth
-		fmt.Printf("calculateRelativePath: target in root, currentDepth=%d, upLevels=%d\n", currentDepth, upLevels)
 
 		// 构建相对路径
 		var pathParts []string
@@ -931,15 +902,12 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 			pathParts = append(pathParts, "..")
 		}
 		pathParts = append(pathParts, targetParts...)
-		result := strings.Join(pathParts, "/")
-		fmt.Printf("calculateRelativePath: final result='%s'\n", result)
-		return result
+		return strings.Join(pathParts, "/")
 	}
 
 	// 如果目标模块有层级，需要计算更复杂的路径
 	// 这里暂时使用原来的逻辑
 	upLevels := currentDepth
-	fmt.Printf("calculateRelativePath: currentDepth=%d, upLevels=%d\n", currentDepth, upLevels)
 
 	// 构建相对路径
 	var pathParts []string
@@ -947,9 +915,7 @@ func (s *Scope) calculateRelativePath(currentNamespace, targetModule string) str
 		pathParts = append(pathParts, "..")
 	}
 	pathParts = append(pathParts, targetParts...)
-	result := strings.Join(pathParts, "/")
-	fmt.Printf("calculateRelativePath: final result='%s'\n", result)
-	return result
+	return strings.Join(pathParts, "/")
 }
 
 // isTypeDefinedInCurrentFile 检查类型是否在当前文件中定义
