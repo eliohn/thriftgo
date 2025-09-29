@@ -43,7 +43,11 @@ merchants2: install clean
 	@mkdir -p gen-merchants
 	@../../thriftgo.exe -g typescript:lower_camel_case_property_name=true -r -o gen-merchants d:/huidu/xym_idl/idl/http/http_admin/merchant.thrift
 	@echo "商户测试代码生成完成，输出目录: gen-merchants/"
-
+enum_test: install clean
+	@echo "生成商户测试的 TypeScript 代码..."
+	@mkdir -p gen-enum_test
+	@../../thriftgo.exe -g typescript:lower_camel_case_property_name=true -r -o gen-enum_test test_enum_tag.thrift
+	@echo "商户测试代码生成完成，输出目录: gen-enum_test/"
 req_test: install clean
 	@echo "生成商户测试的 TypeScript 代码..."
 

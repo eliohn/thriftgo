@@ -30,5 +30,17 @@ export enum {{ GetInterfaceName .Name }} {
   {{ GetEnumValueName .Name }} = {{ .Value }},
 {{- end }}
 }
+
+{{- if HasEnumValueWithTag . }}
+// 枚举选项数组，用于下拉菜单等场景
+export const {{ GetInterfaceName .Name }}Options = [
+{{- range GetEnumOptions . }}
+  {
+    label: '{{ .label }}',
+    value: {{ .value }},
+  },
+{{- end }}
+] as const;
+{{- end }}
 {{- end -}}
 `

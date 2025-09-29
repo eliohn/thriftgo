@@ -708,3 +708,52 @@ func GetFunctionComment(function *parser.Function) string {
 	}
 	return FormatCommentForJSDoc(function.ReservedComments)
 }
+
+// GetEnumValueTag 获取枚举值的 tag 注解
+func GetEnumValueTag(enumValue *parser.EnumValue) string {
+	if enumValue == nil {
+		return ""
+	}
+
+	// 查找 ts.tag 注解
+	for _, annotation := range enumValue.Annotations {
+		if annotation.Key == "ts.tag" && len(annotation.Values) > 0 {
+			return annotation.Values[0]
+		}
+	}
+	return ""
+}
+
+// HasEnumValueWithTag 检查枚举是否有带 tag 的值
+func HasEnumValueWithTag(enum *parser.Enum) bool {
+	if enum == nil {
+		return false
+	}
+
+	for _, value := range enum.Values {
+		if GetEnumValueTag(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetEnumOptions 获取枚举的 options 数组
+func GetEnumOptions(enum *parser.Enum) []map[string]interface{} {
+	if enum == nil {
+		return nil
+	}
+
+	var options []map[string]interface{}
+	for _, value := range enum.Values {
+		tag := GetEnumValueTag(value)
+		if tag != "" {
+			option := map[string]interface{}{
+				"label": tag,
+				"value": fmt.Sprintf("%s.%s", GetEnumName(enum.Name), GetEnumValueName(value.Name)),
+			}
+			options = append(options, option)
+		}
+	}
+	return options
+}
