@@ -36,10 +36,10 @@ install:
 	cd ../.. && make build_tool
 
 # 生成基本测试的 Golang 代码
-basic1: install
+basic1: install clean
 	@echo "生成基本测试的 Golang 代码..."
 	@mkdir -p gen-basic
-	@../../thriftgo.exe -g go -r -o gen-basic test_basic.thrift
+	@../../thriftgo.exe -g go -thrift frugal_tag,template=slim -r -o gen-basic test_basic.thrift
 	@echo "基本测试代码生成完成，输出目录: gen-basic/"
 
 expand1: install clean

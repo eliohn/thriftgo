@@ -21,7 +21,7 @@ import (
 // Extension .
 func Extension() []string {
 	return []string{
-		StructLike,
+		replaceInsertionPoint(StructLike, "ExtraFieldMap", extraMapFieldText),
 		Client,
 		Processor,
 	}
