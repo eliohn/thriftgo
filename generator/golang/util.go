@@ -389,6 +389,17 @@ func (cu *CodeUtils) genFieldTags(f *Field, insertPoint string, extend []string)
 	// 添加默认的 form 和 query 标签（如果不存在）
 	cu.addDefaultHTTPTags(&tags, f, gotags)
 
+	// 处理校验标签：api.vd
+	// 如果在字段注解中提供了 api.vd，则追加 vd:"..." 到结构体标签中
+	if vdVals := f.Field.Annotations.Get("api.vd"); len(vdVals) > 0 && vdVals[0] != "" {
+		vd := vdVals[0]
+		// 为了保证生成的 tag 合法，转义内部的双引号
+		if cu.Features().EscapeDoubleInTag {
+			vd = strings.ReplaceAll(vd, "\"", "\\\"")
+		}
+		tags = append(tags, fmt.Sprintf(`vd:"%s"`, vd))
+	}
+
 	str := fmt.Sprintf("`%s%s`", strings.Join(tags, " "), insertPoint)
 	return str, nil
 }
