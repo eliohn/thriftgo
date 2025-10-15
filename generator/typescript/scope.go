@@ -739,6 +739,7 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"GetEnumComment":                       GetEnumComment,
 		"GetEnumValueComment":                  GetEnumValueComment,
 		"GetEnumValueTag":                      GetEnumValueTag,
+		"GetEnumValueColor":                    GetEnumValueColor,
 		"HasEnumValueWithTag":                  HasEnumValueWithTag,
 		"GetEnumOptions":                       GetEnumOptions,
 		"GetServiceComment":                    GetServiceComment,

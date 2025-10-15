@@ -37,7 +37,8 @@ export const {{ GetInterfaceName .Name }}Options = [
 {{- range GetEnumOptions . }}
   {
     label: '{{ .label }}',
-    value: {{ .value }},
+    value: {{ .value }},{{- if .color }}
+    color: '{{ .color }}',{{- end }}
   },
 {{- end }}
 ] as const;

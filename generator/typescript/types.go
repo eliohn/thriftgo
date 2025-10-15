@@ -729,6 +729,21 @@ func GetEnumValueTag(enumValue *parser.EnumValue) string {
 	return ""
 }
 
+// GetEnumValueColor 获取枚举值的 color 注解
+func GetEnumValueColor(enumValue *parser.EnumValue) string {
+	if enumValue == nil {
+		return ""
+	}
+
+	// 查找 ts.color 注解
+	for _, annotation := range enumValue.Annotations {
+		if annotation.Key == "ts.color" && len(annotation.Values) > 0 {
+			return annotation.Values[0]
+		}
+	}
+	return ""
+}
+
 // HasEnumValueWithTag 检查枚举是否有带 tag 的值
 func HasEnumValueWithTag(enum *parser.Enum) bool {
 	if enum == nil {
@@ -756,6 +771,10 @@ func GetEnumOptions(enum *parser.Enum) []map[string]interface{} {
 			option := map[string]interface{}{
 				"label": tag,
 				"value": fmt.Sprintf("%s.%s", GetEnumName(enum.Name), GetEnumValueName(value.Name)),
+			}
+			// 添加 color 信息（如果存在）
+			if color := GetEnumValueColor(value); color != "" {
+				option["color"] = color
 			}
 			options = append(options, option)
 		}
