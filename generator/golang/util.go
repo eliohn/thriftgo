@@ -400,6 +400,26 @@ func (cu *CodeUtils) genFieldTags(f *Field, insertPoint string, extend []string)
 		tags = append(tags, fmt.Sprintf(`vd:"%s"`, vd))
 	}
 
+	// 处理 binding 标签：用于 Swagger/OpenAPI 文档生成
+	// 检查是否启用了 binding 标签生成
+	if cu.Features().GenBindingTag {
+		// 检查 go.tag 中是否已经包含 binding 标签
+		hasBindingTag := false
+		if len(gotags) > 0 {
+			tagStr := gotags[0]
+			hasBindingTag = strings.Contains(tagStr, `binding:"`)
+		}
+
+		// 如果没有 binding 标签，则生成
+		if !hasBindingTag {
+			// 只为必需字段生成 binding:"required" 标签
+			if f.Requiredness.IsRequired() {
+				tags = append(tags, `binding:"required"`)
+			}
+			// 可选字段不生成 binding 标签
+		}
+	}
+
 	str := fmt.Sprintf("`%s%s`", strings.Join(tags, " "), insertPoint)
 	return str, nil
 }

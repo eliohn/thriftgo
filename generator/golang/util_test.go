@@ -15,8 +15,11 @@
 package golang
 
 import (
-	"github.com/cloudwego/thriftgo/parser"
+	"strings"
 	"testing"
+
+	"github.com/cloudwego/thriftgo/generator/backend"
+	"github.com/cloudwego/thriftgo/parser"
 )
 
 func TestSnakify(t *testing.T) {
@@ -220,5 +223,68 @@ func TestGenAnnotations(t *testing.T) {
 				t.Fail()
 			}
 		})
+	}
+}
+
+func TestGenBindingTag(t *testing.T) {
+	// 创建一个简单的 CodeUtils 实例用于测试
+	cu := NewCodeUtils(backend.DummyLogFunc())
+
+	// 测试必需字段生成 binding:"required"
+	requiredField := &Field{
+		Field: &parser.Field{
+			Name:         "name",
+			ID:           1,
+			Requiredness: parser.FieldType_Required,
+		},
+	}
+
+	// 启用 GenBindingTag 特性
+	features := cu.Features()
+	features.GenBindingTag = true
+	cu.SetFeatures(features)
+
+	// 生成标签
+	tags, err := cu.GenFieldTags(requiredField, "")
+	if err != nil {
+		t.Fatalf("GenFieldTags failed: %v", err)
+	}
+
+	// 验证是否包含 binding:"required"
+	if !strings.Contains(tags, `binding:"required"`) {
+		t.Errorf("Expected binding:\"required\" tag for required field, got: %s", tags)
+	}
+
+	// 测试可选字段生成 binding:"-"
+	optionalField := &Field{
+		Field: &parser.Field{
+			Name:         "email",
+			ID:           2,
+			Requiredness: parser.FieldType_Optional,
+		},
+	}
+
+	tags, err = cu.GenFieldTags(optionalField, "")
+	if err != nil {
+		t.Fatalf("GenFieldTags failed: %v", err)
+	}
+
+	// 验证是否包含 binding:"-"
+	if !strings.Contains(tags, `binding:"-"`) {
+		t.Errorf("Expected binding:\"-\" tag for optional field, got: %s", tags)
+	}
+
+	// 测试禁用 GenBindingTag 时不生成 binding 标签
+	features.GenBindingTag = false
+	cu.SetFeatures(features)
+
+	tags, err = cu.GenFieldTags(requiredField, "")
+	if err != nil {
+		t.Fatalf("GenFieldTags failed: %v", err)
+	}
+
+	// 验证不包含 binding 标签
+	if strings.Contains(tags, `binding:"`) {
+		t.Errorf("Expected no binding tag when GenBindingTag is disabled, got: %s", tags)
 	}
 }

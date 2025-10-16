@@ -67,6 +67,7 @@ type Features struct {
 	UseOption                   bool `use_option:"Parse specific Thrift annotations into struct-style option fields. If key not match, thriftgo will just ignore it."`
 	StreamX                     bool `streamx:"Generate stream interfaces with streamx mode."`
 	GenDefaultHTTPTags          bool `gen_default_http_tags:"Generate default form and query tags for HTTP frameworks (default: true)"`
+	GenBindingTag               bool `gen_binding_tag:"Generate 'binding' tag for Swagger/OpenAPI documentation (default: true)"`
 	// ForceUseOption         bool `use_option:"Forcefully parse all Thrift annotations into struct-style option fields. If parsing is not possible, an error will be thrown."`
 	NoFmt             bool `no_fmt:"To achieve faster generation speed, skipping the formatting of Golang code can improve performance by approximately 50%."`
 	SkipEmpty         bool `skip_empty:"If there's not content in file, just skip it. Later this feature will be a default feature."`
@@ -114,6 +115,7 @@ var defaultFeatures = Features{
 	EnableRefInterface:          false,
 	GetEnumAnnotation:           false,
 	GenDefaultHTTPTags:          true, // 默认生成 form 和 query 标签
+	GenBindingTag:               true, // 默认生成 binding 标签
 }
 
 type param struct {
