@@ -34,5 +34,6 @@ func Templates() []string {
 		templates.SingleStructTemplate,
 		templates.SingleServiceTemplate,
 		templates.SimpleServiceImplementationTemplate,
+		templates.FieldsTemplate,
 	}
 }

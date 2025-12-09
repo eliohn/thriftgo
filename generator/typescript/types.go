@@ -963,3 +963,113 @@ func isStructEmptyOrAllFieldsOptionalWithExpandedFields(structLike *parser.Struc
 	// 所有字段都是可选的
 	return allFieldsOptional
 }
+
+// ShouldGenerateFieldsFile 检查结构体是否应该生成 fields.ts 文件
+// 通过检查 struct 的注解来判断，支持的注解格式：
+// - ts.gen_fields = "true" 或 ts.gen_fields = "merchantsettinginfo.fields.ts" 或 ts.gen_fields = "generator/merchantsettinginfo.fields.ts"
+// 注意：由于 Thrift 注解键名不能包含特殊字符（如 / 和 .），所以 generator/xxx.fields.ts 格式只能作为注解值使用
+func ShouldGenerateFieldsFile(structLike *parser.StructLike) bool {
+	if structLike == nil {
+		return false
+	}
+
+	// 检查 ts.gen_fields 注解
+	if genFields := structLike.Annotations.Get("ts.gen_fields"); len(genFields) > 0 {
+		value := genFields[0]
+		// 如果值为 "true" 或非空字符串，则生成
+		if value == "true" || value != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// GetFieldsFileName 获取 fields.ts 文件名
+// 如果注解中指定了文件名，则使用指定的文件名，否则使用默认格式：{structName}.fields.ts
+// 支持的文件名格式：
+// - ts.gen_fields = "true" -> 使用默认文件名 {structName}.fields.ts
+// - ts.gen_fields = "filename.fields.ts" -> 使用指定的文件名
+// - ts.gen_fields = "generator/filename.fields.ts" -> 从路径中提取文件名
+func GetFieldsFileName(structLike *parser.StructLike) string {
+	if structLike == nil {
+		return ""
+	}
+
+	// 检查 ts.gen_fields 注解，如果指定了文件名则使用
+	if genFields := structLike.Annotations.Get("ts.gen_fields"); len(genFields) > 0 {
+		value := genFields[0]
+		// 如果值不是 "true"，则认为是文件名
+		if value != "true" && value != "" {
+			// 提取文件名（去掉路径，只保留文件名）
+			if strings.Contains(value, "/") {
+				parts := strings.Split(value, "/")
+				return parts[len(parts)-1]
+			}
+			return value
+		}
+	}
+
+	// 默认文件名格式：{structName}.fields.ts
+	return strings.ToLower(structLike.Name) + ".fields.ts"
+}
+
+// GetStructFieldNames 获取结构体的所有字段名（包括展开字段）
+// 返回一个字符串切片，用于在模板中生成字段常量
+// 注意：此函数需要在模板中通过 CodeUtils 调用，以便访问 Features
+func GetStructFieldNames(structLike *parser.StructLike) []string {
+	if structLike == nil {
+		return nil
+	}
+
+	var fieldNames []string
+	expandedFieldNames := make(map[string]bool)
+
+	// 获取展开字段名映射
+	ast := GetGlobalAST()
+	if ast != nil {
+		expandedStruct := findStructLikeByName(structLike.Name, ast)
+		if expandedStruct != nil {
+			for _, field := range expandedStruct.Fields {
+				if isExpandField(field) {
+					if field.Type != nil && field.Type.Category.IsStructLike() {
+						referencedStruct := findStructLikeByName(field.Type.Name, ast)
+						if referencedStruct != nil {
+							for _, refField := range referencedStruct.Fields {
+								expandedFieldNames[refField.Name] = true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 收集原始字段（排除展开字段）
+	for _, field := range structLike.Fields {
+		if !expandedFieldNames[field.Name] {
+			// 使用默认的 GetPropertyName（不使用样式转换，因为字段常量应该使用原始字段名）
+			fieldName := GetPropertyName(field.Name)
+			fieldNames = append(fieldNames, fieldName)
+		}
+	}
+
+	// 收集展开字段
+	if ast != nil {
+		for _, field := range structLike.Fields {
+			if isExpandField(field) {
+				if field.Type != nil && field.Type.Category.IsStructLike() {
+					referencedStruct := findStructLikeByName(field.Type.Name, ast)
+					if referencedStruct != nil {
+						for _, refField := range referencedStruct.Fields {
+							fieldName := GetPropertyName(refField.Name)
+							fieldNames = append(fieldNames, fieldName)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return fieldNames
+}

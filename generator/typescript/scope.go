@@ -753,7 +753,73 @@ func (u *CodeUtils) BuildFuncMap() map[string]interface{} {
 		"HasSuffix":                            strings.HasSuffix,
 		"IsStructEmptyOrAllFieldsOptional":     IsStructEmptyOrAllFieldsOptional,
 		"IsStructEmptyOrAllFieldsOptionalWithExpanded": IsStructEmptyOrAllFieldsOptionalWithExpanded,
+		"ShouldGenerateFieldsFile":                     ShouldGenerateFieldsFile,
+		"GetFieldsFileName":                            GetFieldsFileName,
+		"GetStructFieldNames":                          func(structLike *parser.StructLike) []string { return u.getStructFieldNames(structLike) },
 	}
+}
+
+// getStructFieldNames 获取结构体的所有字段名（包括展开字段），使用当前 CodeUtils 的 Features
+func (u *CodeUtils) getStructFieldNames(structLike *parser.StructLike) []string {
+	if structLike == nil {
+		return nil
+	}
+
+	var fieldNames []string
+	expandedFieldNames := make(map[string]bool)
+	expandedFieldSourceNames := make(map[string]bool) // 记录被展开的原始字段名
+
+	// 获取展开字段名映射
+	ast := GetGlobalAST()
+	if ast != nil {
+		for _, field := range structLike.Fields {
+			if isExpandField(field) {
+				// 记录被展开的字段名，这个字段本身不应该出现在字段列表中
+				expandedFieldSourceNames[field.Name] = true
+				if field.Type != nil && field.Type.Category.IsStructLike() {
+					referencedStruct := findStructLikeByName(field.Type.Name, ast)
+					if referencedStruct != nil {
+						for _, refField := range referencedStruct.Fields {
+							expandedFieldNames[refField.Name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 收集原始字段（排除被展开的字段和展开后的字段）
+	for _, field := range structLike.Fields {
+		// 跳过被展开的字段本身（如 baseInfo）
+		if expandedFieldSourceNames[field.Name] {
+			continue
+		}
+		// 跳过展开后的字段（这些会在后面单独添加）
+		if !expandedFieldNames[field.Name] {
+			// 使用 GetPropertyNameWithStyle 保持与接口定义一致
+			fieldName := GetPropertyNameWithStyle(field.Name, u.features)
+			fieldNames = append(fieldNames, fieldName)
+		}
+	}
+
+	// 收集展开字段
+	if ast != nil {
+		for _, field := range structLike.Fields {
+			if isExpandField(field) {
+				if field.Type != nil && field.Type.Category.IsStructLike() {
+					referencedStruct := findStructLikeByName(field.Type.Name, ast)
+					if referencedStruct != nil {
+						for _, refField := range referencedStruct.Fields {
+							fieldName := GetPropertyNameWithStyle(refField.Name, u.features)
+							fieldNames = append(fieldNames, fieldName)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return fieldNames
 }
 
 // CombineOutputPath 组合输出路径

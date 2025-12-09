@@ -197,6 +197,12 @@ func (t *TypeScriptBackend) renderSeparateFiles(scope *Scope, executeTpl *templa
 		if err := t.renderStructFile(scope, executeTpl, basePath, structLike, ast); err != nil {
 			return err
 		}
+		// 检查是否需要生成 fields.ts 文件
+		if ShouldGenerateFieldsFile(structLike) {
+			if err := t.renderFieldsFile(scope, executeTpl, basePath, structLike); err != nil {
+				return err
+			}
+		}
 	}
 
 	// 为每个联合体生成单独文件
@@ -701,4 +707,21 @@ func (t *TypeScriptBackend) renderSimpleServiceImplementationFile(scope *Scope, 
 	}
 
 	return t.renderByTemplateWithTemplate(serviceScope, executeTpl, filename, "simpleServiceImplementation")
+}
+
+// renderFieldsFile 生成 fields.ts 文件
+func (t *TypeScriptBackend) renderFieldsFile(scope *Scope, executeTpl *template.Template, basePath string, structLike *parser.StructLike) error {
+	filename := filepath.Join(basePath, GetFieldsFileName(structLike))
+
+	// 创建只包含该结构体的 scope
+	structScope := &Scope{
+		Filename:        scope.Filename,
+		Package:         scope.Package,
+		Imports:         []ImportInfo{}, // fields.ts 文件只需要导入对应的接口文件
+		Structs:         []*parser.StructLike{structLike},
+		ExpandedStructs: scope.ExpandedStructs,
+		utils:           scope.utils,
+	}
+
+	return t.renderByTemplateWithTemplate(structScope, executeTpl, filename, "fields")
 }

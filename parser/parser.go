@@ -355,9 +355,12 @@ func (p *parser) parseDefinition(node *node32) (err error) {
 			if err != nil {
 				return err
 			}
-			// Apply expandable annotation to the last parsed struct
+			// Apply annotations to the last parsed struct
 			if len(p.Structs) > 0 {
 				lastStruct := p.Structs[len(p.Structs)-1]
+				// Add all annotations to the struct
+				lastStruct.Annotations = ann
+				// Apply expandable annotation specially
 				for _, annotation := range ann {
 					if annotation.Key == "expandable" {
 						expandable := true

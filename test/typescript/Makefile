@@ -67,6 +67,50 @@ patch_test: install clean
 	@../../thriftgo.exe -g typescript:lower_camel_case_property_name=true -r -o gen-request ./test_expreq.thrift
 	@echo "商户测试代码生成完成，输出目录: gen-request/"
 
+fields_test: install clean
+	@echo "生成 fields.ts 测试的 TypeScript 代码..."
+	@mkdir -p gen-fields
+	@if [ -f ../../thriftgo.exe ]; then \
+		../../thriftgo.exe -g typescript -r -o gen-fields test_fields.thrift; \
+	else \
+		../../thriftgo -g typescript -r -o gen-fields test_fields.thrift; \
+	fi
+	@echo "fields.ts 测试代码生成完成，输出目录: gen-fields/"
+	@echo "检查生成的文件..."
+	@if [ -d gen-fields/test/fields ]; then \
+		ls -la gen-fields/test/fields/ || echo "检查生成目录"; \
+	else \
+		echo "生成目录不存在，检查根目录..."; \
+		ls -la gen-fields/ || echo "检查生成目录"; \
+	fi
+	@echo "检查是否生成了 fields.ts 文件..."
+	@if [ -f gen-fields/test/fields/merchantsettinginfo.fields.ts ]; then \
+		echo "✓ merchantsettinginfo.fields.ts 已生成"; \
+		head -20 gen-fields/test/fields/merchantsettinginfo.fields.ts; \
+	else \
+		echo "✗ merchantsettinginfo.fields.ts 未生成"; \
+	fi
+	@if [ -f gen-fields/test/fields/userinfo.fields.ts ]; then \
+		echo "✓ userinfo.fields.ts 已生成"; \
+	else \
+		echo "✗ userinfo.fields.ts 未生成"; \
+	fi
+	@if [ -f gen-fields/test/fields/orderinfo.fields.ts ]; then \
+		echo "✓ orderinfo.fields.ts 已生成"; \
+	else \
+		echo "✗ orderinfo.fields.ts 未生成"; \
+	fi
+	@if [ -f gen-fields/test/fields/extendedinfo.fields.ts ]; then \
+		echo "✓ extendedinfo.fields.ts 已生成"; \
+	else \
+		echo "✗ extendedinfo.fields.ts 未生成"; \
+	fi
+	@if [ ! -f gen-fields/test/fields/productinfo.fields.ts ]; then \
+		echo "✓ productinfo.fields.ts 未生成（正确）"; \
+	else \
+		echo "✗ productinfo.fields.ts 不应该生成"; \
+	fi
+
 # 生成高级测试的 TypeScript 代码
 advanced: install
 	@echo "生成高级测试的 TypeScript 代码..."
@@ -104,6 +148,7 @@ help:
 	@echo "  all        - 生成所有 TypeScript 代码 (默认)"
 	@echo "  basic      - 生成基本测试的 TypeScript 代码"
 	@echo "  advanced   - 生成高级测试的 TypeScript 代码"
+	@echo "  fields_test - 生成 fields.ts 测试的 TypeScript 代码"
 	@echo "  gen        - 生成所有 TypeScript 代码 (同 all)"
 	@echo "  test       - 测试生成的代码"
 	@echo "  clean      - 清理生成的文件"
