@@ -47,3 +47,6 @@ build_tool:
 install: build_tool
 	cp thriftgo.exe C:\Users\yihui\go\bin
 
+build_tool_macos:
+	@GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o thriftgo .
+	@echo "macOS executable built as thriftgo-macos"
