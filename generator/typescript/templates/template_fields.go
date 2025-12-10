@@ -35,10 +35,31 @@ import type { {{ GetInterfaceName $struct.Name }} } from './{{ ToLower $struct.N
  * 使用 satisfies 确保类型安全
  */
 export const {{ GetInterfaceName $struct.Name }}Fields = {
-{{- $fieldNames := GetStructFieldNames $struct }}
-{{- range $index, $fieldName := $fieldNames }}
-{{- if $index }},{{ end }}
-  {{ $fieldName }}: '{{ $fieldName }}'
+{{- $expandedFields := GetExpandedFields $struct }}
+{{- $expandedFieldNames := GetExpandedFieldNames $struct }}
+{{- $firstField := true }}
+{{- range $struct.Fields }}
+{{- $isExpanded := index $expandedFieldNames .Name }}
+{{- if not $isExpanded }}
+{{- if not $firstField }},{{ end }}
+{{- $fieldComment := GetFieldComment . }}
+{{- if $fieldComment }}
+{{ $fieldComment }}
+{{- end }}
+  {{ GetPropertyNameWithStyle .Name }}: '{{ GetPropertyNameWithStyle .Name }}'
+{{- $firstField = false }}
+{{- end }}
+{{- end }}
+{{- if $expandedFields }}
+{{- range $expandedFields }}
+{{- if not $firstField }},{{ end }}
+{{- $fieldComment := GetFieldComment . }}
+{{- if $fieldComment }}
+{{ $fieldComment }}
+{{- end }}
+  {{ GetPropertyNameWithStyle .Name }}: '{{ GetPropertyNameWithStyle .Name }}'
+{{- $firstField = false }}
+{{- end }}
 {{- end }}
 } as const satisfies Record<string, keyof {{ GetInterfaceName $struct.Name }}>;
 
@@ -49,4 +70,3 @@ export type {{ GetInterfaceName $struct.Name }}Field = keyof {{ GetInterfaceName
 {{- end }}
 {{- end -}}
 `
-
