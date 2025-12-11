@@ -21,3 +21,8 @@ struct PingReq {
 service BaseService {
     BaseResp Ping(1: PingReq req),
 }
+
+struct CaptchaReq {
+    1: string captcha_code (api.body="captchaCode")  // 验证码
+    2: string captcha_id (api.body="captchaId")  // 验证码ID
+}(expandable = "true")

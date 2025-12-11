@@ -501,19 +501,46 @@ func findStructLikeByName(name string, ast *parser.Thrift) *parser.StructLike {
 		actualName = name[lastDot+1:]
 	}
 
-	// 在当前文件中查找
+	// 在当前文件中查找 Structs
 	for _, structLike := range ast.Structs {
 		if structLike.Name == actualName {
 			return structLike
 		}
 	}
 
+	// 在当前文件中查找 Unions
+	for _, union := range ast.Unions {
+		if union.Name == actualName {
+			return union
+		}
+	}
+
+	// 在当前文件中查找 Exceptions
+	for _, exception := range ast.Exceptions {
+		if exception.Name == actualName {
+			return exception
+		}
+	}
+
 	// 在包含的文件中查找
 	for _, include := range ast.Includes {
 		if include.Reference != nil {
+			// 查找 Structs
 			for _, structLike := range include.Reference.Structs {
 				if structLike.Name == actualName {
 					return structLike
+				}
+			}
+			// 查找 Unions
+			for _, union := range include.Reference.Unions {
+				if union.Name == actualName {
+					return union
+				}
+			}
+			// 查找 Exceptions
+			for _, exception := range include.Reference.Exceptions {
+				if exception.Name == actualName {
+					return exception
 				}
 			}
 		}

@@ -65,6 +65,18 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
   async {{ GetPropertyNameWithStyle .Name }}(
     {{ range $index, $arg := .Arguments }}{{ if $index }}, {{ end }}{{ GetPropertyNameWithStyle .Name }}{{ if and (IsOptional .) (not (IsStructField .)) }}?{{ end }}: {{ GetFieldType . }}{{ if and (IsStructField .) (IsStructEmptyOrAllFieldsOptional .) }} = {}{{ end }}{{ end }}
   ): Promise<{{ if .FunctionType }}{{ GetTypeScriptType .FunctionType }}{{ else }}void{{ end }}> {
+    {{- $apiMethod := "" }}
+    {{- if .Annotations.Get "api.get" }}
+    {{- $apiMethod = "GET" }}
+    {{- else if .Annotations.Get "api.post" }}
+    {{- $apiMethod = "POST" }}
+    {{- else if .Annotations.Get "api.put" }}
+    {{- $apiMethod = "PUT" }}
+    {{- else if .Annotations.Get "api.delete" }}
+    {{- $apiMethod = "DELETE" }}
+    {{- else if .Annotations.Get "api.patch" }}
+    {{- $apiMethod = "PATCH" }}
+    {{- end }}
     try {
       let url = '{{ if .Annotations.Get "api.get" }}{{ index (.Annotations.Get "api.get") 0 }}{{ else if .Annotations.Get "api.post" }}{{ index (.Annotations.Get "api.post") 0 }}{{ else if .Annotations.Get "api.put" }}{{ index (.Annotations.Get "api.put") 0 }}{{ else if .Annotations.Get "api.delete" }}{{ index (.Annotations.Get "api.delete") 0 }}{{ else if .Annotations.Get "api.patch" }}{{ index (.Annotations.Get "api.patch") 0 }}{{ end }}';
 {{- range $index, $arg := .Arguments }}
@@ -164,31 +176,38 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 {{- end }}
 {{- end }}
 {{- end }}
-      {{- $apiMethod := "" }}
-      {{- if .Annotations.Get "api.get" }}
-      {{- $apiMethod = "GET" }}
-      {{- else if .Annotations.Get "api.post" }}
-      {{- $apiMethod = "POST" }}
-      {{- else if .Annotations.Get "api.put" }}
-      {{- $apiMethod = "PUT" }}
-      {{- else if .Annotations.Get "api.delete" }}
-      {{- $apiMethod = "DELETE" }}
-      {{- else if .Annotations.Get "api.patch" }}
-      {{- $apiMethod = "PATCH" }}
-      {{- end }}
 
       {{- if or (eq $apiMethod "POST") (eq $apiMethod "PUT") (eq $apiMethod "PATCH") }}
       let bodyParam : any = {};
       
       {{- range $argIndex, $arg := .Arguments }}
-      {{- if and (IsStructField $arg) ($arg.Annotations.Get "api.body") }}
-      {{- $structAnnotations := GetStructFieldAnnotationsForTemplate $arg }}
-      {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
-      {{- if not (index $fieldAnnotations "api.query") }}
-      {{- if not (index $fieldAnnotations "api.path") }}
-      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
-        bodyParam['{{ GetPropertyNameWithStyle $fieldName }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
+      {{- $isBodyParam := false }}
+      {{- if $arg.Annotations.Get "api.body" }}
+      {{- $isBodyParam = true }}
+      {{- else if and (IsStructField $arg) (not ($arg.Annotations.Get "api.path")) (not ($arg.Annotations.Get "api.query")) }}
+      {{- $isBodyParam = true }}
+      {{- end }}
+      {{- if and (IsStructField $arg) $isBodyParam }}
+      {{- $structFields := GetStructFields $arg }}
+      {{- range $structField := $structFields }}
+      {{- $expandedFields := GetFieldExpandedFields $structField }}
+      {{- if not $expandedFields }}
+      {{- if not ($structField.Annotations.Get "api.query") }}
+      {{- if not ($structField.Annotations.Get "api.path") }}
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }} !== null) {
+        bodyParam['{{ GetPropertyNameWithStyle $structField.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }};
       }
+      {{- end }}
+      {{- end }}
+      {{- else }}
+      {{- range $expandedField := $expandedFields }}
+      {{- if not ($expandedField.Annotations.Get "api.query") }}
+      {{- if not ($expandedField.Annotations.Get "api.path") }}
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $expandedField.Name }} !== undefined) {
+        bodyParam['{{ GetPropertyNameWithStyle $expandedField.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $expandedField.Name }};
+      }
+      {{- end }}
+      {{- end }}
       {{- end }}
       {{- end }}
       {{- end }}
@@ -249,64 +268,10 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- end }}
       {{- end }}
       {{- end }}
-      {{- else if or (eq $apiMethod "POST") (eq $apiMethod "PUT") (eq $apiMethod "PATCH") }}
-      {{- $hasBodyParam := false }}
-      {{- range .Arguments }}
-      {{- if .Annotations.Get "api.body" }}
-      {{- $hasBodyParam = true }}
       {{- end }}
-      {{- end }}
-      {{- if not $hasBodyParam }}
-      {{- range $argIndex, $arg := .Arguments }}
-      {{- if and (not ($arg.Annotations.Get "api.path")) (not ($arg.Annotations.Get "api.query")) (not ($arg.Annotations.Get "api.body")) }}
-      {{- if IsStructField $arg }}
-      {{- $expandedFields := GetFieldExpandedFields $arg }}
-      {{- if len $expandedFields | eq 0 }}
-      {{- $structAnnotations := GetStructFieldAnnotationsForTemplate $arg }}
-      {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
-      {{- if not (index $fieldAnnotations "api.query") }}
-      {{- if not (index $fieldAnnotations "api.path") }}
-      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
-        bodyParam['{{ GetPropertyNameWithStyle $fieldName }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
-      }
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- if $expandedFields }}
-      {{- range $expandedField := $expandedFields }}
-      {{- if not ($expandedField.Annotations.Get "api.query") }}
-      {{- if not ($expandedField.Annotations.Get "api.path") }}
-      if ({{ GetPropertyNameWithStyle $expandedField.Name }} !== undefined && {{ GetPropertyNameWithStyle $expandedField.Name }} !== null) {
-        bodyParam['{{ GetPropertyNameWithStyle $expandedField.Name }}'] = {{ GetPropertyNameWithStyle $expandedField.Name }};
-      }
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- else }}
-      if ({{ GetPropertyNameWithStyle $arg.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }} !== null && !url.includes(':'+'{{ GetPropertyNameWithStyle $arg.Name }}')) {
-        bodyParam['{{ GetPropertyNameWithStyle $arg.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }};
-      }
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      
       
       {{- if eq $apiMethod "GET" }}
       let response = await axios.get(url, { params: queryParams });
-      {{- else if eq $apiMethod "POST" }}
-      let response = await axios.post(url, bodyParam, { params: queryParams });
-      {{- else if eq $apiMethod "PUT" }}
-      let response = await axios.put(url, bodyParam, { params: queryParams });
-      {{- else if eq $apiMethod "DELETE" }}
-      let response = await axios.delete(url, { params: queryParams });
-      {{- else if eq $apiMethod "PATCH" }}
-      let response = await axios.patch(url, bodyParam, { params: queryParams });
-      {{- end }}
-      
       if (response.status >= 200 && response.status < 300) {
      	if (response.data.code !== 0) {
           throw new BizException(response.data.code, response.data.msg);
@@ -315,6 +280,47 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       } else {
         throw new Error(` + "`" + `HTTP ${response.status}: ${response.statusText}` + "`" + `);
       }
+      {{- else if eq $apiMethod "POST" }}
+      let response = await axios.post(url, bodyParam, { params: queryParams });
+      if (response.status >= 200 && response.status < 300) {
+     	if (response.data.code !== 0) {
+          throw new BizException(response.data.code, response.data.msg);
+        }
+        return response.data;
+      } else {
+        throw new Error(` + "`" + `HTTP ${response.status}: ${response.statusText}` + "`" + `);
+      }
+      {{- else if eq $apiMethod "PUT" }}
+      let response = await axios.put(url, bodyParam, { params: queryParams });
+      if (response.status >= 200 && response.status < 300) {
+     	if (response.data.code !== 0) {
+          throw new BizException(response.data.code, response.data.msg);
+        }
+        return response.data;
+      } else {
+        throw new Error(` + "`" + `HTTP ${response.status}: ${response.statusText}` + "`" + `);
+      }
+      {{- else if eq $apiMethod "DELETE" }}
+      let response = await axios.delete(url, { params: queryParams });
+      if (response.status >= 200 && response.status < 300) {
+     	if (response.data.code !== 0) {
+          throw new BizException(response.data.code, response.data.msg);
+        }
+        return response.data;
+      } else {
+        throw new Error(` + "`" + `HTTP ${response.status}: ${response.statusText}` + "`" + `);
+      }
+      {{- else if eq $apiMethod "PATCH" }}
+      let response = await axios.patch(url, bodyParam, { params: queryParams });
+      if (response.status >= 200 && response.status < 300) {
+     	if (response.data.code !== 0) {
+          throw new BizException(response.data.code, response.data.msg);
+        }
+        return response.data;
+      } else {
+        throw new Error(` + "`" + `HTTP ${response.status}: ${response.statusText}` + "`" + `);
+      }
+      {{- end }}
     } catch (error) {
       console.error('{{ .Name }} request failed:', error);
       throw error;
