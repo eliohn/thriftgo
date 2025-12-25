@@ -60,6 +60,6 @@ struct BaseInfo {
 struct ExtendedInfo {
   1: required string id
   2: optional string name
-  3: optional BaseInfo baseInfo (thrift.expand = "true")
+  3: optional BaseInfo baseInfo
 } (ts.gen_fields = "true")
 

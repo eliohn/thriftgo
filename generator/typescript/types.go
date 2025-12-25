@@ -493,8 +493,23 @@ func GetStructFieldAnnotations(field *parser.Field, ast *parser.Thrift) map[stri
 	return annotations
 }
 
-// findStructLikeByName 根据名称查找结构体定义
+// findStructLikeByName 根据名称查找结构体定义（递归查找包含的文件）
 func findStructLikeByName(name string, ast *parser.Thrift) *parser.StructLike {
+	return findStructLikeByNameRecursive(name, ast, make(map[string]bool))
+}
+
+// findStructLikeByNameRecursive 递归查找结构体定义
+func findStructLikeByNameRecursive(name string, ast *parser.Thrift, visited map[string]bool) *parser.StructLike {
+	if ast == nil {
+		return nil
+	}
+
+	// 防止循环引用
+	if visited[ast.Filename] {
+		return nil
+	}
+	visited[ast.Filename] = true
+
 	// 提取结构体的实际名称（去掉命名空间前缀）
 	actualName := name
 	if lastDot := strings.LastIndex(name, "."); lastDot != -1 {
@@ -522,26 +537,12 @@ func findStructLikeByName(name string, ast *parser.Thrift) *parser.StructLike {
 		}
 	}
 
-	// 在包含的文件中查找
+	// 在包含的文件中递归查找
 	for _, include := range ast.Includes {
 		if include.Reference != nil {
-			// 查找 Structs
-			for _, structLike := range include.Reference.Structs {
-				if structLike.Name == actualName {
-					return structLike
-				}
-			}
-			// 查找 Unions
-			for _, union := range include.Reference.Unions {
-				if union.Name == actualName {
-					return union
-				}
-			}
-			// 查找 Exceptions
-			for _, exception := range include.Reference.Exceptions {
-				if exception.Name == actualName {
-					return exception
-				}
+			// 递归查找包含的文件
+			if result := findStructLikeByNameRecursive(name, include.Reference, visited); result != nil {
+				return result
 			}
 		}
 	}

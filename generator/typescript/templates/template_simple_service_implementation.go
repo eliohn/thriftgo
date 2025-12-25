@@ -147,21 +147,19 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
 
 {{- range $argIndex, $arg := .Arguments }}
 {{- if IsStructField $arg }}
-{{- $structAnnotations := GetStructFieldAnnotationsForTemplate $arg }}
-{{- range $fieldName, $fieldAnnotations := $structAnnotations }}
-{{- if index $fieldAnnotations "api.query" }}
-{{- $queryValue := index $fieldAnnotations "api.query" }}
-{{- if $queryValue }}
-      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
-        queryParams['{{ $queryValue }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
-      }
-{{- end }}
-{{- end }}
-{{- end }}
 {{- $structFields := GetStructFields $arg }}
 {{- range $structField := $structFields }}
 {{- $expandedFields := GetFieldExpandedFields $structField }}
-{{- if $expandedFields }}
+{{- if len $expandedFields | eq 0 }}
+{{- if $structField.Annotations.Get "api.query" }}
+{{- $queryValue := index ($structField.Annotations.Get "api.query") 0 }}
+{{- if $queryValue }}
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }} !== null) {
+        queryParams['{{ $queryValue }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }};
+      }
+{{- end }}
+{{- end }}
+{{- else }}
 {{- range $expandedField := $expandedFields }}
 {{- if $expandedField.Annotations.Get "api.query" }}
 {{- $queryValue := index ($expandedField.Annotations.Get "api.query") 0 }}
@@ -218,19 +216,15 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       {{- if eq $apiMethod "GET" }}
       {{- range $argIndex, $arg := .Arguments }}
       {{- if IsStructField $arg }}
-      {{- $expandedFields := GetFieldExpandedFields $arg }}
-      {{- if len $expandedFields | eq 0 }}
       {{- if and (not ($arg.Annotations.Get "api.path")) (not ($arg.Annotations.Get "api.query")) (not ($arg.Annotations.Get "api.body")) }}
-      {{- $structAnnotations := GetStructFieldAnnotationsForTemplate $arg }}
-      {{- range $fieldName, $fieldAnnotations := $structAnnotations }}
-      {{- $field := GetStructFieldByName $arg $fieldName }}
-      {{- if $field }}
-      {{- $expandedFields := GetFieldExpandedFields $field }}
+      {{- $structFields := GetStructFields $arg }}
+      {{- range $structField := $structFields }}
+      {{- $expandedFields := GetFieldExpandedFields $structField }}
       {{- if len $expandedFields | eq 0 }}
-      {{- if not (index $fieldAnnotations "api.query") }}
-      {{- if not (index $fieldAnnotations "api.path") }}
-      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }} !== null) {
-        queryParams['{{ GetPropertyNameWithStyle $fieldName }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $fieldName }};
+      {{- if not ($structField.Annotations.Get "api.query") }}
+      {{- if not ($structField.Annotations.Get "api.path") }}
+      if ({{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }} !== undefined && {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }} !== null) {
+        queryParams['{{ GetPropertyNameWithStyle $structField.Name }}'] = {{ GetPropertyNameWithStyle $arg.Name }}.{{ GetPropertyNameWithStyle $structField.Name }};
       }
       {{- end }}
       {{- end }}
@@ -243,19 +237,6 @@ export class {{ GetInterfaceName .Name }}Client implements I{{ GetInterfaceName 
       }
       {{- end }}
       {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- if $expandedFields }}
-      {{- range $expandedField := $expandedFields }}
-      {{- if not ($expandedField.Annotations.Get "api.query") }}
-      {{- if not ($expandedField.Annotations.Get "api.path") }}
-      if ({{ GetPropertyNameWithStyle $expandedField.Name }} !== undefined && {{ GetPropertyNameWithStyle $expandedField.Name }} !== null) {
-        queryParams['{{ GetPropertyNameWithStyle $expandedField.Name }}'] = {{ GetPropertyNameWithStyle $expandedField.Name }};
-      }
       {{- end }}
       {{- end }}
       {{- end }}

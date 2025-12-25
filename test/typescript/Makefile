@@ -160,3 +160,9 @@ help:
 	@echo "  make advanced  # 只生成高级测试"
 	@echo "  make test      # 生成并测试所有代码"
 	@echo "  make clean     # 清理所有生成的文件"
+
+
+gen_test: install
+	@echo "生成测试代码..."
+	@mkdir -p gen-test
+	@../../thriftgo.exe -g typescript -r -o gen-test test.thrift
